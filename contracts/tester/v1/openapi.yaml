@@ -1,0 +1,1514 @@
+openapi: 3.0.3
+info:
+  title: TesterService API
+  version: 0.0.1
+paths:
+  /problems:
+    get:
+      operationId: ListProblems
+      parameters:
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: pageSize
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 10
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListProblemsResponse'
+    post:
+      operationId: CreateProblem
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateProblemResponse'
+  /problems/{id}:
+    get:
+      operationId: GetProblem
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetProblemResponse'
+    delete:
+      operationId: DeleteProblem
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 3
+      responses:
+        "200":
+          description: OK
+          content: { }
+    patch:
+      operationId: UpdateProblem
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProblemRequest'
+      responses:
+        "200":
+          description: OK
+          content: { }
+    post:
+      operationId: UploadProblem
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 3
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadProblemRequest'
+      responses:
+        "200":
+          description: OK
+          content: { }
+
+  /contests:
+    get:
+      operationId: ListContests
+      parameters:
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: pageSize
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 10
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListContestsResponse'
+    post:
+      operationId: CreateContest
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateContestResponse'
+  /contests/{id}:
+    get:
+      operationId: GetContest
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetContestResponse'
+    delete:
+      operationId: DeleteContest
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 3
+      responses:
+        "200":
+          description: OK
+    patch:
+      operationId: UpdateContest
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContestRequest'
+      responses:
+        "200":
+          description: OK
+  /tasks:
+    post:
+      operationId: CreateTask
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: contest_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: problem_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTaskResponse'
+  /tasks/{id}:
+    get:
+      operationId: GetTask
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTaskResponse'
+    delete:
+      operationId: DeleteTask
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 3
+      responses:
+        "200":
+          description: OK
+  /participants:
+    get:
+      operationId: ListParticipants
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: contest_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: pageSize
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListParticipantsResponse'
+    post:
+      operationId: CreateParticipant
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: contest_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateParticipantResponse'
+    delete:
+      operationId: DeleteParticipant
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: participant_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      responses:
+        "200":
+          description: OK
+    patch:
+      operationId: UpdateParticipant
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: participant_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateParticipantRequest'
+      responses:
+        "200":
+          description: OK
+  /solutions:
+    post:
+      operationId: CreateSolution
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: task_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: language
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateSolutionRequest'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateSolutionResponse'
+    get:
+      operationId: ListSolutions
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: pageSize
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 10
+        - name: contest_id
+          in: query
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: participantId
+          in: query
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: task_id
+          in: query
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: state
+          in: query
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: order
+          in: query
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: language
+          in: query
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSolutionsResponse'
+  /solutions/{id}:
+    get:
+      operationId: GetSolution
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSolutionResponse'
+  /monitor:
+    get:
+      operationId: GetMonitor
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: contest_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMonitorResponse'
+  /auth/terminate:
+    post:
+      operationId: Terminate
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content: { }
+  /auth/login:
+    post:
+      operationId: Login
+      security:
+        - BasicAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content: { }
+        "404":
+          description: Not Found
+          content: { }
+  /auth/logout:
+    post:
+      operationId: Logout
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content: { }
+  /auth/refresh:
+    post:
+      operationId: Refresh
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content: { }
+  /auth/sessions:
+    get:
+      operationId: ListSessions
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSessionsResponse'
+  /users:
+    post:
+      operationId: CreateUser
+      security:
+        - bearerAuth: [ ]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+    get:
+      operationId: ListUsers
+      parameters:
+        - name: page
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 1
+        - name: pageSize
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 20
+      security:
+        - bearerAuth: [ ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListUsersResponse'
+  /users/{id}:
+    get:
+      operationId: GetUser
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetUserResponse'
+    delete:
+      operationId: DeleteUser
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 3
+      responses:
+        "200":
+          description: OK
+          content: { }
+    patch:
+      operationId: UpdateUser
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+          example: 3
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+        required: true
+      responses:
+        "200":
+          description: OK
+          content: { }
+components:
+  schemas:
+    Pagination:
+      type: object
+      required:
+        - page
+        - total
+      properties:
+        page:
+          type: integer
+          format: int32
+          example: 1
+        total:
+          type: integer
+          format: int32
+          example: 10
+    Problem:
+      type: object
+      required:
+        - id
+        - title
+        - time_limit
+        - memory_limit
+
+        - legend
+        - input_format
+        - output_format
+        - notes
+        - scoring
+
+        - legend_html
+        - input_format_html
+        - output_format_html
+        - notes_html
+        - scoring_html
+
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        title:
+          type: string
+          example: "Test problem"
+        time_limit:
+          type: integer
+          format: int32
+          example: 1000
+        memory_limit:
+          type: integer
+          format: int32
+          example: 256
+
+        legend:
+          type: string
+        input_format:
+          type: string
+        output_format:
+          type: string
+        notes:
+          type: string
+        scoring:
+          type: string
+
+        legend_html:
+          type: string
+        input_format_html:
+          type: string
+        output_format_html:
+          type: string
+        notes_html:
+          type: string
+        scoring_html:
+          type: string
+
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ProblemsListItem:
+      type: object
+      required:
+        - id
+        - title
+        - memory_limit
+        - time_limit
+        - created_at
+        - updated_at
+        - solved_count
+      properties:
+        id:
+          type: integer
+          format: int32
+        title:
+          type: string
+        memory_limit:
+          type: integer
+          format: int32
+        time_limit:
+          type: integer
+          format: int32
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        solved_count:
+          type: integer
+          format: int32
+
+    ListProblemsResponse:
+      type: object
+      required:
+        - problems
+        - pagination
+      properties:
+        problems:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemsListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    CreateProblemResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+    GetProblemResponse:
+      type: object
+      required:
+        - problem
+      properties:
+        problem:
+          $ref: '#/components/schemas/Problem'
+    Contest:
+      type: object
+      required:
+        - id
+        - title
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        title:
+          type: string
+          example: "Test contest"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ContestsListItem:
+      type: object
+      required:
+        - id
+        - title
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        title:
+          type: string
+          example: "Test contest"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ListContestsResponse:
+      type: object
+      required:
+        - contests
+        - pagination
+      properties:
+        contests:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContestsListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    CreateContestResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+    TasksListItem:
+      type: object
+      required:
+        - id
+        - problem_id
+        - position
+        - title
+        - memory_limit
+        - time_limit
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        problem_id:
+          type: integer
+          format: int32
+          example: 1
+        position:
+          type: integer
+          format: int32
+          example: 1
+        title:
+          type: string
+          example: "Test task"
+        memory_limit:
+          type: integer
+          format: int32
+          example: 256
+        time_limit:
+          type: integer
+          format: int32
+          example: 1000
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    GetContestResponse:
+      type: object
+      required:
+        - contest
+        - tasks
+      properties:
+        contest:
+          $ref: '#/components/schemas/Contest'
+        tasks:
+          type: array
+          items:
+            type: object
+            required:
+              - task
+              - solution
+            properties:
+              task:
+                $ref: '#/components/schemas/TasksListItem'
+              solution:
+                $ref: '#/components/schemas/SolutionsListItem'
+    CreateParticipantResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+    CreateTaskResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+    ParticipantsListItem:
+      type: object
+      required:
+        - id
+        - name
+        - user_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        name:
+          type: string
+          example: "Test user"
+        user_id:
+          type: integer
+          format: int32
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ListParticipantsResponse:
+      type: object
+      required:
+        - participants
+        - pagination
+      properties:
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantsListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    UpdateProblemRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: "Test problem"
+        legend:
+          type: string
+        input_format:
+          type: string
+        output_format:
+          type: string
+        notes:
+          type: string
+        scoring:
+          type: string
+        memory_limit:
+          type: integer
+          format: int32
+          example: 256
+        time_limit:
+          type: integer
+          format: int32
+          example: 1000
+    UploadProblemRequest:
+      type: object
+      required:
+        - archive
+      properties:
+        archive:
+          type: string
+          format: binary
+    UpdateContestRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: "Test contest"
+    UpdateParticipantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Test user"
+    CreateSolutionRequest:
+      type: object
+      required:
+        - solution
+      properties:
+        solution:
+          type: string
+          format: binary
+          example: 'print("Hello, world!")'
+    CreateSolutionResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+    ListSolutionsResponse:
+      type: object
+      required:
+        - solutions
+        - pagination
+      properties:
+        solutions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolutionsListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    SolutionsListItem:
+      type: object
+      required:
+        - id
+
+        - participant_id
+        - participant_name
+
+        - state
+        - score
+        - penalty
+        - time_stat
+        - memory_stat
+        - language
+
+        - task_id
+        - task_position
+        - task_title
+
+        - contest_id
+        - contest_title
+
+        - updated_at
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+
+        participant_id:
+          type: integer
+          format: int32
+          example: 1
+        participant_name:
+          type: string
+          example: "user123"
+
+        state:
+          type: integer
+          format: int32
+          example: 1
+        score:
+          type: integer
+          format: int32
+          example: 100
+        penalty:
+          type: integer
+          format: int32
+          example: 28
+        time_stat:
+          type: integer
+          format: int32
+          example: 1000
+        memory_stat:
+          type: integer
+          format: int32
+          example: 256
+        language:
+          type: integer
+          format: int32
+          example: 1
+
+        task_id:
+          type: integer
+          format: int32
+          example: 1
+        task_position:
+          type: integer
+          format: int32
+          example: 1
+        task_title:
+          type: string
+          example: "Task title"
+
+        contest_id:
+          type: integer
+          format: int32
+          example: 1
+        contest_title:
+          type: string
+          example: "Contest title"
+
+        updated_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    Solution:
+      type: object
+      required:
+        - id
+
+        - participant_id
+        - participant_name
+
+        - solution
+
+        - state
+        - score
+        - penalty
+        - time_stat
+        - memory_stat
+        - language
+
+        - task_id
+        - task_position
+        - task_title
+
+        - contest_id
+        - contest_title
+
+        - updated_at
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+
+        participant_id:
+          type: integer
+          format: int32
+          example: 1
+        participant_name:
+          type: string
+          example: "user123"
+
+        solution:
+          type: string
+          example: 'print("Hello, world!")'
+
+        state:
+          type: integer
+          format: int32
+          example: 1
+        score:
+          type: integer
+          format: int32
+          example: 100
+        penalty:
+          type: integer
+          format: int32
+          example: 28
+        time_stat:
+          type: integer
+          format: int32
+          example: 1000
+        memory_stat:
+          type: integer
+          format: int32
+          example: 256
+        language:
+          type: integer
+          format: int32
+          example: 1
+
+        task_id:
+          type: integer
+          format: int32
+          example: 1
+        task_position:
+          type: integer
+          format: int32
+          example: 1
+        task_title:
+          type: string
+          example: "Task title"
+
+        contest_id:
+          type: integer
+          format: int32
+          example: 1
+        contest_title:
+          type: string
+          example: "Contest title"
+
+        updated_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    GetSolutionResponse:
+      type: object
+      required:
+        - solution
+      properties:
+        solution:
+          $ref: '#/components/schemas/Solution'
+    Task:
+      type: object
+      required:
+        - id
+        - position
+        - title
+        - time_limit
+        - memory_limit
+
+        - legend_html
+        - input_format_html
+        - output_format_html
+        - notes_html
+        - scoring_html
+
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        position:
+          type: integer
+          format: int32
+          example: 1
+        title:
+          type: string
+          example: "Test task"
+        time_limit:
+          type: integer
+          format: int32
+          example: 1000
+        memory_limit:
+          type: integer
+          format: int32
+          example: 256
+
+        legend_html:
+          type: string
+        input_format_html:
+          type: string
+        output_format_html:
+          type: string
+        notes_html:
+          type: string
+        scoring_html:
+          type: string
+
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    GetTaskResponse:
+      type: object
+      required:
+        - task
+        - contest
+        - tasks
+      properties:
+        contest:
+          $ref: '#/components/schemas/Contest'
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksListItem'
+        task:
+          $ref: '#/components/schemas/Task'
+    GetMonitorResponse:
+      type: object
+      required:
+        - contest
+        - tasks
+        - participants
+        - summary_per_problem
+      properties:
+        contest:
+          $ref: '#/components/schemas/Contest'
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TasksListItem'
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantsStat'
+        summary_per_problem:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemStatSummary'
+    ProblemStatSummary:
+      type: object
+      required:
+        - id
+        - success
+        - total
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        success:
+          type: integer
+          format: int32
+          example: 14
+        total:
+          type: integer
+          format: int32
+          example: 20
+    ParticipantsStat:
+      type: object
+      required:
+        - id
+        - name
+        - solved_in_total
+        - penalty_in_total
+        - solutions
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 1
+        name:
+          type: string
+          example: "John Doe"
+        solved_in_total:
+          type: integer
+          format: int32
+          example: 3
+        penalty_in_total:
+          type: integer
+          format: int32
+          example: 144
+        solutions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolutionsListItem'
+    CreateUserRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: user123
+        password:
+          type: string
+          example: password123
+    CreateUserResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 13
+    GetUserResponse:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+    UpdateUserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          example: user123
+        role:
+          type: integer
+          format: int32
+          example: 1
+    User:
+      type: object
+      required:
+        - id
+        - username
+        - createdAt
+        - modifiedAt
+        - role
+      properties:
+        id:
+          type: integer
+          format: int32
+          example: 13
+        username:
+          type: string
+          example: user123
+        createdAt:
+          type: string
+          format: date-time
+        modifiedAt:
+          type: string
+          format: date-time
+        role:
+          type: integer
+          format: int32
+          example: 1
+    Session:
+      type: object
+      required:
+        - id
+        - userId
+        - role
+        - createdAt
+        - expiresAt
+        - userAgent
+        - ip
+      properties:
+        id:
+          type: string
+        userId:
+          type: integer
+          format: int32
+          example: 13
+        role:
+          type: integer
+          format: int32
+          example: 1
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        userAgent:
+          type: string
+          example: Mozilla/5.0
+        ip:
+          type: string
+          example: 154.23.50.1
+    ListSessionsResponse:
+      type: object
+      required:
+        - sessions
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+    ListUsersResponse:
+      type: object
+      required:
+        - users
+        - pagination
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -1,0 +1,5 @@
+package: testerv1
+generate:
+  fiber-server: true
+  models: true
+output: ./contracts/tester/v1/tester.go

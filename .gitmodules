@@ -1,0 +1,4 @@
+[submodule "proto"]
+	path = contracts
+	url = https://github.com/Vyacheslav1557/contracts
+	update = rebase
