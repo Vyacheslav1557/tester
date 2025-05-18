@@ -1,5 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE FUNCTION updated_at_update() RETURNS TRIGGER
     LANGUAGE plpgsql AS
 $$
@@ -9,18 +11,18 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION check_max_tasks() RETURNS TRIGGER
+CREATE FUNCTION check_max_problems_on_contest() RETURNS TRIGGER
     LANGUAGE plpgsql AS
 $$
 DECLARE
-    max_on_contest_tasks_amount integer := 50;
+    max_problems_on_contest_count integer := 50;
 BEGIN
     IF (SELECT count(*)
-        FROM tasks
+        FROM contest_problem
         WHERE contest_id = NEW.contest_id) >= (
-           max_on_contest_tasks_amount
+           max_problems_on_contest_count
            ) THEN
-        RAISE EXCEPTION 'Exceeded max tasks for this contest';
+        RAISE EXCEPTION 'Exceeded max problems for this contest';
     END IF;
     RETURN NEW;
 END;
@@ -47,6 +49,8 @@ CREATE TRIGGER on_users_update
     FOR EACH ROW
 EXECUTE PROCEDURE updated_at_update();
 
+CREATE INDEX IF NOT EXISTS users_username_trgm_idx ON users USING GIN (username gin_trgm_ops);
+
 CREATE TABLE IF NOT EXISTS problems
 (
     id                 serial         NOT NULL,
@@ -66,13 +70,17 @@ CREATE TABLE IF NOT EXISTS problems
     notes_html         varchar(10240) NOT NULL DEFAULT '',
     scoring_html       varchar(10240) NOT NULL DEFAULT '',
 
+    meta               jsonb          NOT NULL DEFAULT '{}',
+    samples            jsonb          NOT NULL DEFAULT '[]',
+
     created_at         timestamptz    NOT NULL DEFAULT now(),
     updated_at         timestamptz    NOT NULL DEFAULT now(),
 
     PRIMARY KEY (id),
     CHECK (length(title) != 0),
     CHECK (memory_limit BETWEEN 4 and 1024),
-    CHECK (time_limit BETWEEN 250 and 5000)
+    CHECK (time_limit BETWEEN 250 and 5000),
+    CHECK ( (meta ->> 'count')::integer = jsonb_array_length(meta -> 'names') )
 );
 
 CREATE TRIGGER on_problems_update
@@ -80,6 +88,9 @@ CREATE TRIGGER on_problems_update
     ON problems
     FOR EACH ROW
 EXECUTE PROCEDURE updated_at_update();
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS problem_title_trgm_idx ON problems USING GIN (title gin_trgm_ops);
 
 CREATE TABLE IF NOT EXISTS contests
 (
@@ -97,65 +108,44 @@ CREATE TRIGGER on_contests_update
     FOR EACH ROW
 EXECUTE PROCEDURE updated_at_update();
 
-CREATE TABLE IF NOT EXISTS tasks
+CREATE TABLE IF NOT EXISTS contest_problem
 (
-    id         serial      NOT NULL,
-    problem_id integer     REFERENCES problems (id) ON DELETE SET NULL,
-    contest_id integer     REFERENCES contests (id) ON DELETE SET NULL,
-    position   integer     NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (id),
+    problem_id integer REFERENCES problems (id) ON DELETE SET NULL,
+    contest_id integer REFERENCES contests (id) ON DELETE SET NULL,
+    position   integer NOT NULL,
     UNIQUE (problem_id, contest_id),
     UNIQUE (contest_id, position),
     CHECK (position >= 0)
 );
 
-CREATE TRIGGER max_tasks_on_contest_check
+CREATE TRIGGER max_problems_on_contest_check
     BEFORE INSERT
-    ON tasks
+    ON contest_problem
     FOR EACH STATEMENT
-EXECUTE FUNCTION check_max_tasks();
+EXECUTE FUNCTION check_max_problems_on_contest();
 
-CREATE TRIGGER on_tasks_update
-    BEFORE UPDATE
-    ON tasks
-    FOR EACH ROW
-EXECUTE PROCEDURE updated_at_update();
-
-CREATE TABLE IF NOT EXISTS participants
+CREATE TABLE IF NOT EXISTS contest_user
 (
-    id         serial      NOT NULL,
-    user_id    integer     NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    contest_id integer     NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
-    name       varchar(64) NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (id),
-    UNIQUE (user_id, contest_id),
-    CHECK (length(name) != 0)
+    user_id    integer NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    contest_id integer NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
+    UNIQUE (user_id, contest_id)
 );
-
-CREATE TRIGGER on_participants_update
-    BEFORE UPDATE
-    ON participants
-    FOR EACH ROW
-EXECUTE PROCEDURE updated_at_update();
 
 CREATE TABLE IF NOT EXISTS solutions
 (
-    id             serial           NOT NULL,
-    task_id        integer          REFERENCES tasks (id) ON DELETE SET NULL,
-    participant_id integer          REFERENCES participants (id) ON DELETE SET NULL,
-    solution       varchar(1048576) NOT NULL,
-    state          integer          NOT NULL DEFAULT 1,
-    score          integer          NOT NULL DEFAULT 0,
-    penalty        integer          NOT NULL,
-    time_stat      integer          NOT NULL DEFAULT 0,
-    memory_stat    integer          NOT NULL DEFAULT 0,
-    language       integer          NOT NULL,
-    updated_at     timestamptz      NOT NULL DEFAULT now(),
-    created_at     timestamptz      NOT NULL DEFAULT now(),
+    id          serial           NOT NULL,
+    contest_id  integer          REFERENCES contests (id) ON DELETE SET NULL,
+    problem_id  integer          REFERENCES problems (id) ON DELETE SET NULL,
+    user_id     integer          REFERENCES users (id) ON DELETE SET NULL,
+    solution    varchar(1048576) NOT NULL,
+    state       integer          NOT NULL DEFAULT 1,
+    score       integer          NOT NULL DEFAULT 0,
+    penalty     integer          NOT NULL,
+    time_stat   integer          NOT NULL DEFAULT 0,
+    memory_stat integer          NOT NULL DEFAULT 0,
+    language    integer          NOT NULL,
+    updated_at  timestamptz      NOT NULL DEFAULT now(),
+    created_at  timestamptz      NOT NULL DEFAULT now(),
     PRIMARY KEY (id)
 );
 
@@ -170,17 +160,17 @@ EXECUTE PROCEDURE updated_at_update();
 -- +goose StatementBegin
 DROP TRIGGER IF EXISTS on_solutions_update ON solutions;
 DROP TABLE IF EXISTS solutions;
-DROP TRIGGER IF EXISTS on_participants_update ON participants;
-DROP TABLE IF EXISTS participants;
-DROP TRIGGER IF EXISTS on_tasks_update ON tasks;
-DROP TRIGGER IF EXISTS max_tasks_on_contest_check ON tasks;
-DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS contest_user;
+DROP TRIGGER IF EXISTS max_tasks_on_contest_check ON contest_problem;
+DROP TABLE IF EXISTS contest_problem;
 DROP TRIGGER IF EXISTS on_problems_update ON problems;
+DROP INDEX IF EXISTS problem_title_trgm_idx;
 DROP TABLE IF EXISTS problems;
 DROP TRIGGER IF EXISTS on_contests_update ON contests;
 DROP TABLE IF EXISTS contests;
 DROP TRIGGER IF EXISTS on_users_update ON users;
+DROP INDEX IF EXISTS users_username_trgm_idx;
 DROP TABLE IF EXISTS users;
 DROP FUNCTION IF EXISTS updated_at_update();
-DROP FUNCTION IF EXISTS check_max_tasks();
+DROP FUNCTION IF EXISTS check_max_problems_on_contest();
 -- +goose StatementEnd

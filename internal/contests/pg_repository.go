@@ -8,27 +8,19 @@ import (
 type Repository interface {
 	CreateContest(ctx context.Context, title string) (int32, error)
 	GetContest(ctx context.Context, id int32) (*models.Contest, error)
-	DeleteContest(ctx context.Context, id int32) error
-	UpdateContest(ctx context.Context, id int32, contestUpdate models.ContestUpdate) error
 	ListContests(ctx context.Context, filter models.ContestsFilter) (*models.ContestsList, error)
+	UpdateContest(ctx context.Context, id int32, contestUpdate models.ContestUpdate) error
+	DeleteContest(ctx context.Context, id int32) error
 
-	CreateTask(ctx context.Context, contestId int32, taskId int32) (int32, error)
-	GetTask(ctx context.Context, id int32) (*models.Task, error)
-	DeleteTask(ctx context.Context, taskId int32) error
-	GetTasks(ctx context.Context, contestId int32) ([]*models.TasksListItem, error)
+	CreateContestProblem(ctx context.Context, contestId, problemId int32) error
+	GetContestProblem(ctx context.Context, contestId int32, problemId int32) (*models.ContestProblem, error)
+	GetContestProblems(ctx context.Context, contestId int32) ([]*models.ContestProblemsListItem, error)
+	DeleteContestProblem(ctx context.Context, contestId, problemId int32) error
 
-	GetParticipantId(ctx context.Context, contestId int32, userId int32) (int32, error)
-	GetParticipantId2(ctx context.Context, taskId int32, userId int32) (int32, error)
-	GetParticipantId3(ctx context.Context, solutionId int32) (int32, error)
-	CreateParticipant(ctx context.Context, contestId int32, userId int32) (int32, error)
-	DeleteParticipant(ctx context.Context, participantId int32) error
-	UpdateParticipant(ctx context.Context, id int32, participantUpdate models.ParticipantUpdate) error
-	ListParticipants(ctx context.Context, filter models.ParticipantsFilter) (*models.ParticipantsList, error)
+	CreateParticipant(ctx context.Context, contestId, userId int32) error
+	IsParticipant(ctx context.Context, contestId int32, userId int32) (bool, error)
+	DeleteParticipant(ctx context.Context, contestId, userId int32) error
+	ListParticipants(ctx context.Context, filter models.ParticipantsFilter) (*models.UsersList, error)
 
-	GetSolution(ctx context.Context, id int32) (*models.Solution, error)
-	CreateSolution(ctx context.Context, creation *models.SolutionCreation) (int32, error)
-	ListSolutions(ctx context.Context, filter models.SolutionsFilter) (*models.SolutionsList, error)
-	GetBestSolutions(ctx context.Context, contestId int32, participantId int32) ([]*models.SolutionsListItem, error)
-
-	GetMonitor(ctx context.Context, id int32, penalty int32) (*models.Monitor, error)
+	GetMonitor(ctx context.Context, contestId int32) (*models.Monitor, error)
 }

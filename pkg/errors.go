@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	"net/http"
+	"strings"
 )
 
 var (
@@ -18,10 +19,41 @@ var (
 	ErrInternal        = errors.New("internal")
 )
 
-func Wrap(basic error, err error, op string, msg string) error {
-	return errors.Join(basic, err, fmt.Errorf("during %s: %s", op, msg))
+type CustomError struct {
+	Basic   error  // Basic error (ErrInternal, ErrBadInput etc.) is used to map to HTTP status
+	Cause   error  // Extra error (cause) is used for logging
+	Op      string // Operation during which the error occurred
+	Message string // Message
 }
 
+func (e *CustomError) Error() string {
+	var parts []string
+	if e.Basic != nil {
+		parts = append(parts, e.Basic.Error())
+	}
+	if e.Cause != nil {
+		parts = append(parts, e.Cause.Error())
+	}
+	if e.Op != "" && e.Message != "" {
+		parts = append(parts, fmt.Sprintf("during %s: %s", e.Op, e.Message))
+	}
+	return strings.Join(parts, ": ")
+}
+
+func (e *CustomError) Unwrap() []error {
+	return []error{e.Basic, e.Cause}
+}
+
+func Wrap(basic error, err error, op string, msg string) error {
+	return &CustomError{
+		Basic:   basic,
+		Cause:   err,
+		Op:      op,
+		Message: msg,
+	}
+}
+
+// TODO: move this code to middleware
 func ToREST(err error) int {
 	switch {
 	case errors.Is(err, ErrUnauthenticated):
@@ -43,11 +75,13 @@ func HandlePgErr(err error, op string) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		if pgerrcode.IsIntegrityConstraintViolation(pgErr.Code) {
-			return Wrap(ErrBadInput, err, op, pgErr.Message)
+			return Wrap(ErrBadInput, err, op, "integrity constraint violation")
 		}
-		if pgerrcode.IsNoData(pgErr.Code) {
-			return Wrap(ErrNotFound, err, op, pgErr.Message)
-		}
+		//if pgerrcode.IsNoData(pgErr.Code) {
+		//	return Wrap(ErrNotFound, err, op, pgErr.Message)
+		//}
+
+		return Wrap(ErrUnhandled, err, op, "unexpected postgres error")
 	}
 
 	if errors.Is(err, sql.ErrNoRows) {

@@ -6,20 +6,19 @@ import (
 )
 
 type ContestsHandlers interface {
-	ListContests(c *fiber.Ctx, params testerv1.ListContestsParams) error
-	CreateContest(c *fiber.Ctx) error
-	DeleteContest(c *fiber.Ctx, id int32) error
+	CreateParticipant(c *fiber.Ctx, contestId int32, params testerv1.CreateParticipantParams) error
+	ListParticipants(c *fiber.Ctx, contestId int32, params testerv1.ListParticipantsParams) error
+	DeleteParticipant(c *fiber.Ctx, contestId int32, params testerv1.DeleteParticipantParams) error
+
+	CreateContestProblem(c *fiber.Ctx, contestId int32, params testerv1.CreateContestProblemParams) error
+	GetContestProblem(c *fiber.Ctx, contestId int32, problemId int32) error
+	DeleteContestProblem(c *fiber.Ctx, contestId int32, problemId int32) error
+
+	CreateContest(c *fiber.Ctx, params testerv1.CreateContestParams) error
 	GetContest(c *fiber.Ctx, id int32) error
+	ListContests(c *fiber.Ctx, params testerv1.ListContestsParams) error
 	UpdateContest(c *fiber.Ctx, id int32) error
-	DeleteParticipant(c *fiber.Ctx, params testerv1.DeleteParticipantParams) error
-	ListParticipants(c *fiber.Ctx, params testerv1.ListParticipantsParams) error
-	UpdateParticipant(c *fiber.Ctx, params testerv1.UpdateParticipantParams) error
-	CreateParticipant(c *fiber.Ctx, params testerv1.CreateParticipantParams) error
-	ListSolutions(c *fiber.Ctx, params testerv1.ListSolutionsParams) error
-	CreateSolution(c *fiber.Ctx, params testerv1.CreateSolutionParams) error
-	GetSolution(c *fiber.Ctx, id int32) error
-	DeleteTask(c *fiber.Ctx, id int32) error
-	CreateTask(c *fiber.Ctx, params testerv1.CreateTaskParams) error
-	GetMonitor(c *fiber.Ctx, params testerv1.GetMonitorParams) error
-	GetTask(c *fiber.Ctx, id int32) error
+	DeleteContest(c *fiber.Ctx, id int32) error
+
+	GetMonitor(c *fiber.Ctx, contestId int32) error
 }

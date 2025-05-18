@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/Vyacheslav1557/tester/internal/models"
 	"github.com/Vyacheslav1557/tester/internal/users"
 	"github.com/Vyacheslav1557/tester/pkg"
@@ -126,22 +127,69 @@ func (r *Repository) DeleteUser(ctx context.Context, q users.Querier, id int32) 
 	return nil
 }
 
-const (
-	ListUsersQuery  = "SELECT * FROM users LIMIT $1 OFFSET $2"
-	CountUsersQuery = "SELECT COUNT(*) FROM users"
-)
+func buildListUsersQuery(filters models.UsersListFilters) (sq.SelectBuilder, sq.SelectBuilder) {
+	qb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Select("id, username, role, created_at").From("users")
+
+	// If username filter is provided, wrap the query in a subquery to compute word_similarity
+	if filters.Username != nil {
+		// Subquery computes word_similarity
+		subquery := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+			Select("id, username, role, created_at, word_similarity(username, ?) AS similarity").
+			From("users").
+			Where("word_similarity(username, ?) > 0", *filters.Username, *filters.Username)
+
+		// Outer query selects only desired columns and orders by similarity
+		qb = sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+			Select("id, username, role, created_at").
+			FromSelect(subquery, "sub").
+			OrderBy("similarity DESC")
+	}
+
+	if filters.Role != nil {
+		qb = qb.Where(sq.Eq{"role": *filters.Role})
+	}
+
+	countQb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Select("COUNT(*)").FromSelect(qb, "sub")
+
+	// If username filter is not provided, order by created_at
+	if filters.Username == nil {
+		if filters.Order != nil && *filters.Order < 0 {
+			qb = qb.OrderBy("created_at DESC")
+		} else {
+			qb = qb.OrderBy("created_at ASC")
+		}
+	}
+
+	qb = qb.Limit(uint64(filters.PageSize)).Offset(uint64(filters.Offset()))
+
+	return qb, countQb
+}
 
 func (r *Repository) ListUsers(ctx context.Context, q users.Querier, filters models.UsersListFilters) (*models.UsersList, error) {
 	const op = "Caller.ListUsers"
 
+	baseQb, countQb := buildListUsersQuery(filters)
+
+	query, args, err := baseQb.ToSql()
+	if err != nil {
+		return nil, pkg.HandlePgErr(err, op)
+	}
+
 	list := make([]*models.User, 0)
-	err := q.SelectContext(ctx, &list, ListUsersQuery, filters.PageSize, filters.Offset())
+	err = q.SelectContext(ctx, &list, query, args...)
+	if err != nil {
+		return nil, pkg.HandlePgErr(err, op)
+	}
+
+	query, args, err = countQb.ToSql()
 	if err != nil {
 		return nil, pkg.HandlePgErr(err, op)
 	}
 
 	var count int32
-	err = q.GetContext(ctx, &count, CountUsersQuery)
+	err = q.GetContext(ctx, &count, query, args...)
 	if err != nil {
 		return nil, pkg.HandlePgErr(err, op)
 	}

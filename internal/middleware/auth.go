@@ -50,17 +50,16 @@ func AuthMiddleware(jwtSecret string, sessionsUC sessions.UseCase) fiber.Handler
 
 		ctx := c.Context()
 
-		// check if session exists
-		_, err = sessionsUC.ReadSession(ctx, token.SessionId)
+		session, err := sessionsUC.ReadSession(ctx, token.SessionId)
 		if err != nil {
 			if errors.Is(err, pkg.ErrNotFound) {
 				return c.Next()
 			}
 
-			return c.SendStatus(pkg.ToREST(err))
+			return err
 		}
 
-		c.Locals(TokenKey, token)
+		c.Locals("session", session)
 		return c.Next()
 	}
 }

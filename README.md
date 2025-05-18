@@ -1,20 +1,47 @@
-# ms-tester
+# tester
 
-`ms-tester` is a microservice designed for managing programming competitions. It provides backend functionality for handling problems, contests, participants, and their submissions. The service is developed in Go. PostgreSQL serves as the relational database. Pandoc is used to convert problem statements from LaTeX to HTML.
+[![Go](https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go)](https://golang.org/)
+[![Fiber](https://img.shields.io/badge/Fiber-00ADD8?style=flat-square&logo=go)](https://gofiber.io/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker)](https://www.docker.com/)
+[![AWS S3](https://img.shields.io/badge/AWS_S3-569A31?style=flat-square&logo=amazonaws)](https://aws.amazon.com/s3/)
+[![Valkey](https://img.shields.io/badge/Valkey-FF6F00?style=flat-square&logo=redis)](https://valkey.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql)](https://www.postgresql.org/)
+[![SeaweedFS](https://img.shields.io/badge/SeaweedFS-3C8D0F?style=flat-square)](https://github.com/seaweedfs/seaweedfs)
+[![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis)](https://redis.io/)
+[![Pandoc](https://img.shields.io/badge/Pandoc-000000?style=flat-square)](https://pandoc.org/)
+[![OpenAPI v3](https://img.shields.io/badge/OpenAPI-v3-green)](https://swagger.io/specification/)
+
+`tester` is a backend service designed for managing programming competitions. It handles problems, contests,
+participants, and their submissions, as well as user authentication and management. The service is developed in Go using
+the Fiber framework. PostgreSQL serves as the relational database, Valkey (or Redis) is used for caching and session
+management, and SeaweedFS provides distributed file storage with an S3-compatible interface. Pandoc is used to convert
+problem statements from LaTeX to HTML.
 
 For understanding the architecture, see the [documentation](https://github.com/Vyacheslav1557/docs).
 
-### Prerequisites
+## Features
+
+- Manage programming contests, problems, and participant submissions.
+- User authentication and management via JWT.
+- File storage using SeaweedFS with an S3-compatible API.
+- LaTeX to HTML conversion for problem statements using Pandoc.
+- RESTful API defined with OpenAPI.
+
+## Prerequisites
 
 Before you begin, ensure you have the following dependencies installed:
 
-* **Docker** and **Docker Compose**: To run PostgreSQL, Pandoc.
-* **Goose**: For applying database migrations (`go install github.com/pressly/goose/v3/cmd/goose@latest`).
-* **oapi-codegen**: For generating OpenAPI code (`go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest`).
+- **Docker** and **Docker Compose**: To run PostgreSQL, Pandoc, Valkey, and SeaweedFS.
+- **Goose**: For applying database migrations (`go install github.com/pressly/goose/v3/cmd/goose@latest`).
+- **oapi-codegen**: For generating OpenAPI code (`go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest`).
 
-### 1. Running Dependencies
+Also you must have docker [images](https://github.com/Vyacheslav1557/images) built. They are used as a runtime
+environment for the solutions.
 
-You can run PostgreSQL and Pandoc using Docker Compose, for example:
+## 1. Running Dependencies
+
+The service depends on PostgreSQL, Pandoc, Valkey, and SeaweedFS, which can be run using Docker Compose. Below is an
+example `docker-compose.yml` configuration:
 
 ```yaml
 version: '3.8'
@@ -22,26 +49,76 @@ services:
   pandoc:
     image: pandoc/latex
     ports:
-      - "4000:3030"  # Exposes Pandoc server on port 4000 locally
-    command: "server" # Runs Pandoc in server mode
+      - "4000:3030"
+    command: "server"
   postgres:
-    image: postgres:14.1-alpine # Uses PostgreSQL 14.1 Alpine image
-    restart: always # Ensures the container restarts if it stops
+    image: postgres:14.1-alpine
+    restart: always
     environment:
-      POSTGRES_USER: postgres # Default user
-      POSTGRES_PASSWORD: supersecretpassword # Default password (change for production!)
-      POSTGRES_DB: postgres # Default database name
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: supersecretpassword
+      POSTGRES_DB: tester
     ports:
-      - '5432:5432' # Exposes PostgreSQL on the standard port 5432
+      - '5432:5432'
     volumes:
-      - ./postgres-data:/var/lib/postgresql/data # Persists database data locally
+      - ./postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: pg_isready -U postgres -d postgres # Command to check if PostgreSQL is ready
-      interval: 10s # Check every 10 seconds
-      timeout: 3s # Wait 3 seconds for the check to respond
-      retries: 5 # Try 5 times before marking as unhealthy
+      test: pg_isready -U postgres -d tester
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  valkey:
+    image: valkey/valkey:latest
+    volumes:
+      - ./conf/valkey.conf:/usr/local/etc/valkey/valkey.conf
+      - ./valkey-data:/data
+    command: [ "valkey-server", "/usr/local/etc/valkey/valkey.conf" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "valkey-cli ping | grep PONG" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "6379:6379"
+  master:
+    image: chrislusf/seaweedfs:3.77_full
+    ports:
+      - "9333:9333"
+      - "19333:19333"
+      - "9324:9324"
+    command: "-v 9 master -ip=master -ip.bind=0.0.0.0 -metricsPort=9324"
+  volume:
+    image: chrislusf/seaweedfs:3.77_full
+    ports:
+      - "8080:8080"
+      - "18080:18080"
+      - "9325:9325"
+    command: '-v 9 volume -mserver="master:9333" -ip.bind=0.0.0.0 -port=2 -metricsPort=9325'
+    depends_on:
+      - master
+  filer:
+    image: chrislusf/seaweedfs:3.77_full
+    ports:
+      - "8888:8888"
+      - "18888:18888"
+      - "9326:9326"
+    command: '-v 9 filer -master="master:9333" -ip.bind=0.0.0.0 -metricsPort=9326'
+    depends_on:
+      - master
+      - volume
+  s3:
+    image: chrislusf/seaweedfs:3.77_full
+    ports:
+      - "8333:8333"
+      - "9327:9327"
+    command: '-v 9 s3 -filer="filer:8888" -ip.bind=0.0.0.0 -metricsPort=9327'
+    depends_on:
+      - master
+      - volume
+      - filer
 volumes:
-  postgres-data: # Defines the named volume for data persistence
+  postgres-data:
+  valkey-data:
 ```
 
 Start the services in detached mode:
@@ -50,59 +127,121 @@ Start the services in detached mode:
 docker-compose up -d
 ```
 
-### 2. Configuration
+#### SeaweedFS Configuration
 
-The application uses environment variables for configuration. Create a `.env` file in the project root. The minimum required variables are:
+SeaweedFS is used for distributed file storage with an S3-compatible API. The s3.json file is required to configure S3
+credentials and permissions. Place it in the project root or a designated configuration directory. An example s3.json is
+shown below:
+
+```json
+{
+  "identities": [
+    {
+      "name": "some_admin_user",
+      "credentials": [
+        {
+          "accessKey": "some_access_key1",
+          "secretKey": "some_access_key1"
+        }
+      ],
+      "actions": [
+        "Admin",
+        "Read",
+        "List",
+        "Tagging",
+        "Write"
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "id": "testid",
+      "displayName": "M. Tester",
+      "emailAddress": "tester@ceph.com"
+    }
+  ]
+}
+```
+
+Ensure the S3_ACCESS_KEY and S3_SECRET_KEY in your .env file match the credentials defined in s3.json.
+
+## 2. Configuration
+
+The application uses environment variables for configuration. Create a .env file in the project root with the following
+variables:
 
 ```dotenv
 # Environment type (development or production)
-ENV=dev # or prod
+ENV=dev
+
+# Address and port where the tester service will listen
+ADDRESS=0.0.0.0:13000
 
 # Address of the running Pandoc service
 PANDOC=http://localhost:4000
 
-# Address and port where the ms-tester service will listen
-ADDRESS=localhost:8080
-
 # PostgreSQL connection string (Data Source Name)
-# Format: postgres://user:password@host:port/database?sslmode=disable
-POSTGRES_DSN=postgres://username:supersecretpassword@localhost:5432/db_name?sslmode=disable
+POSTGRES_DSN=host=localhost port=5432 user=postgres password=supersecretpassword dbname=tester sslmode=disable
+
+# Valkey/Redis connection string
+REDIS_DSN=valkey://localhost:6379/0
 
 # Secret key for signing and verifying JWT tokens
-JWT_SECRET=your_super_secret_jwt_key
+JWT_SECRET=secret
+
+# Default admin credentials
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin
+
+# SeaweedFS S3 configuration
+S3_ENDPOINT=http://localhost:8333
+S3_ACCESS_KEY=some_access_key1
+S3_SECRET_KEY=some_access_key1
+
+# Cache configuration
+# is needed to download archives from S3 and store tests in the cache
+CACHE_DIR=C:\Users\You\gate7\tester\cache
 ```
 
-**Important:** Replace `supersecretpassword` and `your_super_secret_jwt_key` with secure, unique values, especially for a production environment.
+Important: Replace supersecretpassword, secret, admin, some_access_key1, and other sensitive values with secure, unique
+values for production.
 
-### 3. Database Migrations
+## 3. Database Migrations
 
-The project uses `goose` to manage the database schema.
+The project uses goose to manage the database schema.
+Ensure goose is installed:
 
-1.  Ensure `goose` is installed:
-    ```bash
-    go install github.com/pressly/goose/v3/cmd/goose@latest
-    ```
-2.  Apply the migrations to the running PostgreSQL database. Make sure the connection string in the command matches the `POSTGRES_DSN` from your `.env` file:
-    ```bash
-    goose -dir ./migrations postgres "postgres://postgres:supersecretpassword@localhost:5432/postgres?sslmode=disable" up
-    ```
+```bash
+go install github.com/pressly/goose/v3/cmd/goose@latest
+```
 
-### 4. OpenAPI Code Generation
+Apply migrations to the PostgreSQL database:
 
-The project uses OpenAPI to define its API. Go code for handlers and models is generated based on this specification using `oapi-codegen`.
+```bash
+goose -dir ./migrations postgres "host=localhost port=5432 user=postgres password=supersecretpassword dbname=tester sslmode=disable" up
+```
 
+## 4. OpenAPI Code Generation
+
+The API is defined using OpenAPI, and Go code for handlers and models is generated with oapi-codegen.
 Run the generation command:
 
 ```bash
 make gen
 ```
 
-### 5. Running the Application
+## 5. Running the Application
 
-Start the `ms-tester` service:
+Start the tester service:
 
 ```bash
 go run ./main.go
 ```
 
-After starting, the service will be available at the address specified in the `ADDRESS` variable in your `.env` file (e.g., `http://localhost:8080`).
+The service will be available at the address specified in the ADDRESS variable (e.g., http://localhost:13000).
+
+## 6. Authentication and User Management
+
+The service handles user authentication using JWT tokens, with credentials stored in PostgreSQL and sessions managed via
+Valkey. Default admin credentials are set via ADMIN_USERNAME and ADMIN_PASSWORD in the .env file. Users can be managed
+through API endpoints defined in the OpenAPI specification.

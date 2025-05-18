@@ -7,7 +7,7 @@ import (
 
 type ProblemsHandlers interface {
 	ListProblems(c *fiber.Ctx, params testerv1.ListProblemsParams) error
-	CreateProblem(c *fiber.Ctx) error
+	CreateProblem(c *fiber.Ctx, params testerv1.CreateProblemParams) error
 	DeleteProblem(c *fiber.Ctx, id int32) error
 	GetProblem(c *fiber.Ctx, id int32) error
 	UpdateProblem(c *fiber.Ctx, id int32) error

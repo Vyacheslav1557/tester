@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"github.com/Vyacheslav1557/tester/internal/models"
 	"github.com/jmoiron/sqlx"
+	"io"
 )
 
 type Querier interface {
@@ -29,4 +30,9 @@ type Repository interface {
 	DeleteProblem(ctx context.Context, q Querier, id int32) error
 	ListProblems(ctx context.Context, q Querier, filter models.ProblemsFilter) (*models.ProblemsList, error)
 	UpdateProblem(ctx context.Context, q Querier, id int32, heading *models.ProblemUpdate) error
+}
+
+type S3Repository interface {
+	UploadTestsFile(ctx context.Context, id int32, reader io.Reader) (string, error)
+	DownloadTestsFile(ctx context.Context, id int32) (io.ReadCloser, error)
 }

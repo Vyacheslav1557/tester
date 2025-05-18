@@ -7,7 +7,6 @@ import (
 	"github.com/Vyacheslav1557/tester/internal/problems"
 	"github.com/Vyacheslav1557/tester/pkg"
 	"github.com/gofiber/fiber/v2"
-	"io"
 )
 
 type Handlers struct {
@@ -42,7 +41,7 @@ func (h *Handlers) ListProblems(c *fiber.Ctx, params testerv1.ListProblemsParams
 
 	session, err := sessionFromCtx(ctx)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	switch session.Role {
@@ -50,9 +49,11 @@ func (h *Handlers) ListProblems(c *fiber.Ctx, params testerv1.ListProblemsParams
 		problemsList, err := h.problemsUC.ListProblems(c.Context(), models.ProblemsFilter{
 			Page:     params.Page,
 			PageSize: params.PageSize,
+			Title:    params.Title,
+			Order:    params.Order,
 		})
 		if err != nil {
-			return c.SendStatus(pkg.ToREST(err))
+			return err
 		}
 
 		resp := testerv1.ListProblemsResponse{
@@ -65,30 +66,34 @@ func (h *Handlers) ListProblems(c *fiber.Ctx, params testerv1.ListProblemsParams
 		}
 		return c.JSON(resp)
 	default:
-		return c.SendStatus(pkg.ToREST(pkg.NoPermission))
+		return pkg.NoPermission
 	}
 }
 
-func (h *Handlers) CreateProblem(c *fiber.Ctx) error {
+func (h *Handlers) CreateProblem(c *fiber.Ctx, params testerv1.CreateProblemParams) error {
 	ctx := c.Context()
 
 	session, err := sessionFromCtx(ctx)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	switch session.Role {
 	case models.RoleAdmin, models.RoleTeacher:
-		id, err := h.problemsUC.CreateProblem(c.Context(), "Название задачи")
-		if err != nil {
-			return c.SendStatus(pkg.ToREST(err))
+		if params.Title == "" {
+			return pkg.Wrap(pkg.ErrBadInput, nil, "CreateProblem", "empty title")
 		}
 
-		return c.JSON(testerv1.CreateProblemResponse{
+		id, err := h.problemsUC.CreateProblem(c.Context(), params.Title)
+		if err != nil {
+			return err
+		}
+
+		return c.JSON(testerv1.CreationResponse{
 			Id: id,
 		})
 	default:
-		return c.SendStatus(pkg.ToREST(pkg.NoPermission))
+		return pkg.NoPermission
 	}
 }
 
@@ -97,19 +102,19 @@ func (h *Handlers) DeleteProblem(c *fiber.Ctx, id int32) error {
 
 	session, err := sessionFromCtx(ctx)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	switch session.Role {
 	case models.RoleAdmin, models.RoleTeacher:
 		err := h.problemsUC.DeleteProblem(c.Context(), id)
 		if err != nil {
-			return c.SendStatus(pkg.ToREST(err))
+			return err
 		}
 
 		return c.SendStatus(fiber.StatusOK)
 	default:
-		return c.SendStatus(pkg.ToREST(pkg.NoPermission))
+		return pkg.NoPermission
 	}
 }
 
@@ -118,21 +123,21 @@ func (h *Handlers) GetProblem(c *fiber.Ctx, id int32) error {
 
 	session, err := sessionFromCtx(ctx)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	switch session.Role {
 	case models.RoleAdmin, models.RoleTeacher:
 		problem, err := h.problemsUC.GetProblemById(c.Context(), id)
 		if err != nil {
-			return c.SendStatus(pkg.ToREST(err))
+			return err
 		}
 
 		return c.JSON(
 			testerv1.GetProblemResponse{Problem: *ProblemDTO(problem)},
 		)
 	default:
-		return c.SendStatus(pkg.ToREST(pkg.NoPermission))
+		return pkg.NoPermission
 	}
 }
 
@@ -141,7 +146,7 @@ func (h *Handlers) UpdateProblem(c *fiber.Ctx, id int32) error {
 
 	session, err := sessionFromCtx(ctx)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	switch session.Role {
@@ -165,55 +170,50 @@ func (h *Handlers) UpdateProblem(c *fiber.Ctx, id int32) error {
 		})
 
 		if err != nil {
-			return c.SendStatus(pkg.ToREST(err))
+			return err
 		}
 
 		return c.SendStatus(fiber.StatusOK)
 	default:
-		return c.SendStatus(pkg.ToREST(pkg.NoPermission))
+		return pkg.NoPermission
 	}
 }
 
 func (h *Handlers) UploadProblem(c *fiber.Ctx, id int32) error {
+	const op = "ProblemsHandlers.UploadProblem"
+
 	ctx := c.Context()
 
-	//session, err := sessionFromCtx(ctx)
-	//if err != nil {
-	//	return c.SendStatus(pkg.ToREST(err))
-	//}
-
-	session := models.Session{
-		Role: models.RoleAdmin,
+	session, err := sessionFromCtx(ctx)
+	if err != nil {
+		return err
 	}
 
 	switch session.Role {
 	case models.RoleAdmin, models.RoleTeacher:
 		a, err := c.FormFile("archive")
 		if err != nil {
-			return err
+			return pkg.Wrap(pkg.ErrBadInput, err, op, "no archive uploaded")
 		}
 
-		if a.Size == 0 { // FIXME: check max size
-			return c.SendStatus(fiber.StatusBadRequest)
+		if a.Size == 0 || a.Size > 1024*1024*1024 {
+			return pkg.Wrap(pkg.ErrBadInput, err, op, "invalid archive size")
 		}
 
 		f, err := a.Open()
 		if err != nil {
-			return err
+			return pkg.Wrap(pkg.ErrBadInput, err, op, "failed to open archive")
 		}
 		defer f.Close()
 
-		data, err := io.ReadAll(f)
+		err = h.problemsUC.UploadProblem(ctx, id, f, a.Size)
 		if err != nil {
 			return err
 		}
 
-		if err = h.problemsUC.UploadProblem(ctx, id, data); err != nil {
-			return err
-		}
-		return nil
+		return c.SendStatus(fiber.StatusOK)
 	default:
-		return c.SendStatus(pkg.ToREST(pkg.NoPermission))
+		return pkg.NoPermission
 	}
 }
 
@@ -232,7 +232,6 @@ func ProblemsListItemDTO(p models.ProblemsListItem) testerv1.ProblemsListItem {
 		TimeLimit:   p.TimeLimit,
 		CreatedAt:   p.CreatedAt,
 		UpdatedAt:   p.UpdatedAt,
-		SolvedCount: p.SolvedCount,
 	}
 }
 
@@ -255,7 +254,16 @@ func ProblemDTO(p *models.Problem) *testerv1.Problem {
 		NotesHtml:        p.NotesHtml,
 		ScoringHtml:      p.ScoringHtml,
 
+		//Meta:    MetaDTO(p.Meta),
+		//Samples: SamplesDTO(p.Samples),
+
 		CreatedAt: p.CreatedAt,
 		UpdatedAt: p.UpdatedAt,
 	}
 }
+
+//func MetaDTO(m models.Meta) testerv1.Meta {
+//	return testerv1.Meta{
+//		Author: m.Author,
+//	}
+//}

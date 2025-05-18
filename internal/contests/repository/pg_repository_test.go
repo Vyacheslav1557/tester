@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// setupTestDB creates a mocked sqlx.DB and sqlmock instance for testing.
+// setupTestDB creates a mocked sqlx.DB and sqlmock instance for runner.
 func setupTestDB(t *testing.T) (*sqlx.DB, sqlmock.Sqlmock) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	assert.NoError(t, err)

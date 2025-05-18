@@ -48,26 +48,28 @@ func (h *Handlers) Terminate(c *fiber.Ctx) error {
 
 	session, err := sessionFromCtx(ctx)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	err = h.authUC.Terminate(ctx, session.UserId)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	return c.SendStatus(fiber.StatusOK)
 }
 
 func (h *Handlers) Login(c *fiber.Ctx) error {
+	const op = "AuthHandlers.Login"
+
 	authHeader := c.Get("Authorization", "")
 	if authHeader == "" {
-		return c.SendStatus(fiber.StatusUnauthorized)
+		return pkg.Wrap(pkg.ErrUnauthenticated, nil, op, "no auth header")
 	}
 
 	username, pwd, err := parseBasicAuth(authHeader)
 	if err != nil {
-		return c.SendStatus(fiber.StatusUnauthorized)
+		return err
 	}
 
 	credentials := &models.Credentials{
@@ -83,7 +85,7 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 
 	session, err := h.authUC.Login(ctx, credentials, device)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, models.JWT{
@@ -95,7 +97,7 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 
 	token, err := claims.SignedString([]byte(h.jwtSecret))
 	if err != nil {
-		return c.SendStatus(fiber.StatusInternalServerError)
+		return pkg.Wrap(pkg.ErrInternal, err, op, "failed to sign token")
 	}
 
 	c.Set("Authorization", "Bearer "+token)
@@ -108,12 +110,12 @@ func (h *Handlers) Logout(c *fiber.Ctx) error {
 
 	session, err := sessionFromCtx(ctx)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	err = h.authUC.Logout(c.Context(), session.Id)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
 	return c.SendStatus(fiber.StatusOK)
@@ -124,13 +126,27 @@ func (h *Handlers) Refresh(c *fiber.Ctx) error {
 
 	session, err := sessionFromCtx(ctx)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
 
-	err = h.authUC.Refresh(c.Context(), session.Id)
+	err = h.authUC.Refresh(ctx, session.Id)
 	if err != nil {
-		return c.SendStatus(pkg.ToREST(err))
+		return err
 	}
+
+	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, models.JWT{
+		SessionId: session.Id,
+		UserId:    session.UserId,
+		Role:      session.Role,
+		IssuedAt:  time.Now().Unix(),
+	})
+
+	token, err := claims.SignedString([]byte(h.jwtSecret))
+	if err != nil {
+		return pkg.Wrap(pkg.ErrInternal, err, "", "failed to sign token")
+	}
+
+	c.Set("Authorization", "Bearer "+token)
 
 	return c.SendStatus(fiber.StatusOK)
 }

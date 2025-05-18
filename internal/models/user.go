@@ -42,6 +42,9 @@ func (user *User) IsSamePwd(password string) bool {
 type UsersListFilters struct {
 	PageSize int32
 	Page     int32
+	Role     *Role
+	Username *string
+	Order    *int32
 }
 
 func (f UsersListFilters) Offset() int32 {

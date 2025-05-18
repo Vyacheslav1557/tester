@@ -18,17 +18,23 @@ import (
 	problemsHandlers "github.com/Vyacheslav1557/tester/internal/problems/delivery/rest"
 	problemsRepository "github.com/Vyacheslav1557/tester/internal/problems/repository"
 	problemsUseCase "github.com/Vyacheslav1557/tester/internal/problems/usecase"
+	runnerUseCase "github.com/Vyacheslav1557/tester/internal/runner/usecase"
 	sessionsRepository "github.com/Vyacheslav1557/tester/internal/sessions/repository"
 	sessionsUseCase "github.com/Vyacheslav1557/tester/internal/sessions/usecase"
+	"github.com/Vyacheslav1557/tester/internal/solutions"
+	solutionsHandlers "github.com/Vyacheslav1557/tester/internal/solutions/delivery/rest"
+	solutionsRepository "github.com/Vyacheslav1557/tester/internal/solutions/repository"
+	solutionsUseCase "github.com/Vyacheslav1557/tester/internal/solutions/usecase"
 	"github.com/Vyacheslav1557/tester/internal/users"
 	usersHandlers "github.com/Vyacheslav1557/tester/internal/users/delivery/rest"
 	usersRepository "github.com/Vyacheslav1557/tester/internal/users/repository"
 	usersUseCase "github.com/Vyacheslav1557/tester/internal/users/usecase"
 	"github.com/Vyacheslav1557/tester/pkg"
+	"github.com/docker/docker/client"
 	"github.com/gofiber/fiber/v2"
-	fiberlogger "github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/ilyakaznacheev/cleanenv"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"net/http"
 	"os"
 	"os/signal"
@@ -46,7 +52,18 @@ func main() {
 	if cfg.Env == "prod" {
 		logger = zap.Must(zap.NewProduction())
 	} else if cfg.Env == "dev" {
-		logger = zap.Must(zap.NewDevelopment())
+		lcfg := zap.NewDevelopmentConfig()
+		lcfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		lcfg.Encoding = "console"
+		lcfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		lcfg.EncoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+		lcfg.DisableStacktrace = true
+
+		logger, err = lcfg.Build()
+		if err != nil {
+			panic(err)
+		}
+		defer logger.Sync()
 	} else {
 		panic(fmt.Sprintf(`error reading config: env expected "prod" or "dev", got "%s"`, cfg.Env))
 	}
@@ -62,14 +79,28 @@ func main() {
 	logger.Info("connecting to redis")
 	vk, err := pkg.NewValkeyClient(cfg.RedisDSN)
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("error connecting to redis: %s", err.Error()))
+		logger.Fatal(fmt.Sprintf("error connecting to redis: %v", err))
 	}
 	logger.Info("successfully connected to redis")
 
+	logger.Info("connecting to s3")
+	s3Client, err := pkg.NewS3Client(cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey)
+	if err != nil {
+		logger.Fatal(fmt.Sprintf("error connecting to s3: %v", err))
+	}
+	logger.Info("successfully connected to s3")
+
 	usersRepo := usersRepository.NewRepository(db)
 
-	_, err = usersRepo.CreateUser(context.Background(),
-		usersRepo.DB(), &models.UserCreation{
+	sessionsRepo := sessionsRepository.NewValkeyRepository(vk)
+	sessionsUC := sessionsUseCase.NewUseCase(sessionsRepo, cfg)
+
+	usersUC := usersUseCase.NewUseCase(sessionsRepo, usersRepo)
+
+	// every time we start the app, we create an admin user
+	// think of a better way
+	_, err = usersUC.CreateUser(context.Background(),
+		&models.UserCreation{
 			Username: cfg.AdminUsername,
 			Password: cfg.AdminPassword,
 			Role:     models.RoleAdmin,
@@ -78,40 +109,56 @@ func main() {
 		logger.Error(fmt.Sprintf("error creating admin user: %s", err.Error()))
 	}
 
-	sessionsRepo := sessionsRepository.NewValkeyRepository(vk)
-	sessionsUC := sessionsUseCase.NewUseCase(sessionsRepo, cfg)
-
-	usersUC := usersUseCase.NewUseCase(sessionsRepo, usersRepo)
-
 	authUC := authUseCase.NewUseCase(usersUC, sessionsUC)
 
 	pandocClient := pkg.NewPandocClient(&http.Client{}, cfg.Pandoc)
 
 	problemsRepo := problemsRepository.NewRepository(db)
-	problemsUC := problemsUseCase.NewUseCase(problemsRepo, pandocClient)
+	s3Repo := problemsRepository.NewS3Repository(s3Client, "tester-problems-archives")
+
+	problemsUC := problemsUseCase.NewUseCase(problemsRepo, pandocClient, s3Repo, cfg.CacheDir)
 
 	contestsRepo := contestsRepository.NewRepository(db)
 	contestsUC := contestsUseCase.NewContestUseCase(contestsRepo)
 
-	server := fiber.New()
+	solutionsRepo := solutionsRepository.NewRepository(db)
+	solutionsUC := solutionsUseCase.NewUseCase(solutionsRepo)
+
+	if err := os.MkdirAll(cfg.CacheDir, 0700); err != nil {
+		panic(fmt.Errorf("failed to create cache dir: %v", err))
+	}
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		panic(fmt.Errorf("failed to create docker client: %v", err))
+	}
+
+	runnerUC := runnerUseCase.NewUseCase(cli, cfg.CacheDir)
+
+	server := fiber.New(fiber.Config{
+		BodyLimit: 512 * 1024 * 1024, // 512 MB
+	})
 
 	type MergedHandlers struct {
 		users.UsersHandlers
 		auth.AuthHandlers
 		contests.ContestsHandlers
 		problems.ProblemsHandlers
+		solutions.SolutionsHandlers
 	}
 
 	merged := MergedHandlers{
 		usersHandlers.NewHandlers(usersUC),
 		authHandlers.NewHandlers(authUC, cfg.JWTSecret),
-		contestsHandlers.NewHandlers(problemsUC, contestsUC, cfg.JWTSecret),
+		contestsHandlers.NewHandlers(problemsUC, contestsUC, runnerUC),
 		problemsHandlers.NewHandlers(problemsUC),
+		solutionsHandlers.NewHandlers(solutionsUC, runnerUC, problemsUC, contestsUC),
 	}
 
 	testerv1.RegisterHandlersWithOptions(server, merged, testerv1.FiberServerOptions{
 		Middlewares: []testerv1.MiddlewareFunc{
-			fiberlogger.New(),
+			//flogger.New(),
+			middleware.ErrorHandlerMiddleware(logger),
 			middleware.AuthMiddleware(cfg.JWTSecret, sessionsUC),
 			//rest.AuthMiddleware(cfg.JWTSecret, userUC),
 			//cors.New(cors.Config{

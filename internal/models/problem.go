@@ -1,6 +1,54 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
+
+type Meta struct {
+	Count int      `json:"count"`
+	Names []string `json:"names"` // e.g "01", "02", "03"
+}
+
+func (m *Meta) Scan(src interface{}) error {
+	if src == nil {
+		*m = Meta{}
+		return nil
+	}
+
+	// Expect src to be []byte (JSONB data)
+	data, ok := src.([]byte)
+	if !ok {
+		return fmt.Errorf("expected []byte for JSONB, got %T", src)
+	}
+
+	// Unmarshal JSON into Meta
+	return json.Unmarshal(data, m)
+}
+
+type Sample struct {
+	Input  string `json:"input"`
+	Output string `json:"output"`
+}
+
+type Samples []Sample
+
+func (s *Samples) Scan(src interface{}) error {
+	if src == nil {
+		*s = nil
+		return nil
+	}
+
+	// Expect src to be []byte (JSONB data)
+	data, ok := src.([]byte)
+	if !ok {
+		return fmt.Errorf("expected []byte for JSONB, got %T", src)
+	}
+
+	// Unmarshal JSON into []Sample
+	return json.Unmarshal(data, s)
+}
 
 type Problem struct {
 	Id          int32  `db:"id"`
@@ -20,6 +68,9 @@ type Problem struct {
 	NotesHtml        string `db:"notes_html"`
 	ScoringHtml      string `db:"scoring_html"`
 
+	Meta    Meta    `db:"meta"`    // JSONB field
+	Samples Samples `db:"samples"` // JSONB field
+
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
 }
@@ -31,7 +82,6 @@ type ProblemsListItem struct {
 	TimeLimit   int32     `db:"time_limit"`
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
-	SolvedCount int32     `db:"solved_count"`
 }
 
 type ProblemsList struct {
@@ -42,6 +92,8 @@ type ProblemsList struct {
 type ProblemsFilter struct {
 	Page     int32
 	PageSize int32
+	Title    *string
+	Order    *int32
 }
 
 func (f ProblemsFilter) Offset() int32 {
@@ -64,6 +116,9 @@ type ProblemUpdate struct {
 	OutputFormatHtml *string `db:"output_format_html"`
 	NotesHtml        *string `db:"notes_html"`
 	ScoringHtml      *string `db:"scoring_html"`
+
+	Meta    *Meta     `db:"meta"`    // JSONB field
+	Samples *[]Sample `db:"samples"` // JSONB field
 }
 
 type ProblemStatement struct {

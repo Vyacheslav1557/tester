@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS base
+FROM golang:1.24-alpine AS base
 WORKDIR /src
 RUN --mount=type=cache,target=/go/pkg/mod/ \
   --mount=type=bind,source=go.sum,target=go.sum \

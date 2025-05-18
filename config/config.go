@@ -14,6 +14,12 @@ type Config struct {
 	AdminUsername string `env:"ADMIN_USERNAME" env-default:"admin"`
 	AdminPassword string `env:"ADMIN_PASSWORD" env-default:"admin"`
 
+	S3Endpoint  string `env:"S3_ENDPOINT" required:"true"`
+	S3AccessKey string `env:"S3_ACCESS_KEY" required:"true"`
+	S3SecretKey string `env:"S3_SECRET_KEY" required:"true"`
+
+	CacheDir string `env:"CACHE_DIR" env-default:"/tmp"`
+
 	//RabbitDSN    string `env:"RABBIT_DSN" required:"true"`
 	//InstanceName string `env:"INSTANCE_NAME" required:"true"`
 	//RQueueName   string `env:"R_QUEUE_NAME" required:"true"`

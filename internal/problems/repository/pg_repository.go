@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/Vyacheslav1557/tester/internal/problems"
 	"github.com/Vyacheslav1557/tester/pkg"
 
@@ -80,36 +81,59 @@ func (r *Repository) DeleteProblem(ctx context.Context, q problems.Querier, id i
 	return nil
 }
 
-const (
-	ListProblemsQuery = `SELECT p.id,
-       p.title,
-       p.memory_limit,
-       p.time_limit,
-       p.created_at,
-       p.updated_at,
-       COALESCE(solved_count, 0) AS solved_count
-FROM problems p
-         LEFT JOIN (SELECT t.problem_id,
-                           COUNT(DISTINCT s.participant_id) AS solved_count
-                    FROM solutions s
-                             JOIN tasks t ON s.task_id = t.id
-                    WHERE s.state = 5
-                    GROUP BY t.problem_id) sol ON p.id = sol.problem_id
-LIMIT $1 OFFSET $2`
-	CountProblemsQuery = "SELECT COUNT(*) FROM problems"
-)
+func buildListProblemsQueries(filter models.ProblemsFilter) (sq.SelectBuilder, sq.SelectBuilder) {
+	qb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Select("id, title, memory_limit, time_limit, created_at, updated_at").From("problems")
+
+	if filter.Title != nil {
+		subquery := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+			Select("id, title, memory_limit, time_limit, created_at, updated_at, word_similarity(title, ?) AS similarity").
+			From("problems").
+			Where("word_similarity(title, ?) > 0", *filter.Title, *filter.Title)
+
+		qb = sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+			Select("id, title, memory_limit, time_limit, created_at, updated_at").
+			FromSelect(subquery, "sub").
+			OrderBy("similarity DESC")
+	}
+
+	countQb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Select("COUNT(*)").FromSelect(qb, "sub")
+
+	if filter.Order != nil && *filter.Order < 0 {
+		qb = qb.OrderBy("created_at DESC")
+	} else {
+		qb = qb.OrderBy("created_at ASC")
+	}
+
+	qb = qb.Limit(uint64(filter.PageSize)).Offset(uint64(filter.Offset()))
+
+	return qb, countQb
+}
 
 func (r *Repository) ListProblems(ctx context.Context, q problems.Querier, filter models.ProblemsFilter) (*models.ProblemsList, error) {
 	const op = "ContestRepository.ListProblems"
 
-	var list []*models.ProblemsListItem
-	err := q.SelectContext(ctx, &list, ListProblemsQuery, filter.PageSize, filter.Offset())
+	ListProblemsQuery, CountProblemsQuery := buildListProblemsQueries(filter)
+
+	query, args, err := ListProblemsQuery.ToSql()
+	if err != nil {
+		return nil, pkg.HandlePgErr(err, op)
+	}
+
+	list := make([]*models.ProblemsListItem, 0)
+	err = q.SelectContext(ctx, &list, query, args...)
+	if err != nil {
+		return nil, pkg.HandlePgErr(err, op)
+	}
+
+	query, args, err = CountProblemsQuery.ToSql()
 	if err != nil {
 		return nil, pkg.HandlePgErr(err, op)
 	}
 
 	var count int32
-	err = q.GetContext(ctx, &count, CountProblemsQuery)
+	err = q.GetContext(ctx, &count, query, args...)
 	if err != nil {
 		return nil, pkg.HandlePgErr(err, op)
 	}
@@ -139,7 +163,10 @@ SET title              = COALESCE($2, title),
     input_format_html  = COALESCE($11, input_format_html),
     output_format_html = COALESCE($12, output_format_html),
     notes_html         = COALESCE($13, notes_html),
-    scoring_html       = COALESCE($14, scoring_html)
+    scoring_html       = COALESCE($14, scoring_html),
+    
+    meta               = COALESCE($15, meta),
+	samples            = COALESCE($16, samples)
 
 WHERE id=$1`
 )
@@ -166,6 +193,9 @@ func (r *Repository) UpdateProblem(ctx context.Context, q problems.Querier, id i
 		problem.OutputFormatHtml,
 		problem.NotesHtml,
 		problem.ScoringHtml,
+
+		problem.Meta,
+		problem.Samples,
 	)
 	if err != nil {
 		return pkg.HandlePgErr(err, op)
