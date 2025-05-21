@@ -1,15 +1,15 @@
 # tester
 
-[![Go](https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go)](https://golang.org/)
-[![Fiber](https://img.shields.io/badge/Fiber-00ADD8?style=flat-square&logo=go)](https://gofiber.io/)
-[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker)](https://www.docker.com/)
-[![AWS S3](https://img.shields.io/badge/AWS_S3-569A31?style=flat-square&logo=amazonaws)](https://aws.amazon.com/s3/)
-[![Valkey](https://img.shields.io/badge/Valkey-FF6F00?style=flat-square&logo=redis)](https://valkey.io/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql)](https://www.postgresql.org/)
-[![SeaweedFS](https://img.shields.io/badge/SeaweedFS-3C8D0F?style=flat-square)](https://github.com/seaweedfs/seaweedfs)
-[![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis)](https://redis.io/)
-[![Pandoc](https://img.shields.io/badge/Pandoc-000000?style=flat-square)](https://pandoc.org/)
-[![OpenAPI v3](https://img.shields.io/badge/OpenAPI-v3-green)](https://swagger.io/specification/)
+[![Go](https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go&logoColor=white)](https://golang.org/)
+[![Fiber](https://img.shields.io/badge/Fiber-008080?style=flat-square&logo=go&logoColor=white)](https://gofiber.io/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
+[![AWS S3](https://img.shields.io/badge/AWS_S3-F90?style=flat-square&logo=amazonaws&logoColor=white)](https://aws.amazon.com/s3/)
+[![Valkey](https://img.shields.io/badge/Valkey-A00?style=flat-square&logo=redis&logoColor=white)](https://valkey.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![SeaweedFS](https://img.shields.io/badge/SeaweedFS-2A8000?style=flat-square)](https://github.com/seaweedfs/seaweedfs)
+[![Redis](https://img.shields.io/badge/Redis-B00?style=flat-square&logo=redis&logoColor=white)](https://redis.io/)
+[![Pandoc](https://img.shields.io/badge/Pandoc-4A4A4A?style=flat-square)](https://pandoc.org/)
+[![OpenAPI v3](https://img.shields.io/badge/OpenAPI-v3-6BA81E?style=flat-square&logo=swagger&logoColor=white)](https://swagger.io/specification/)
 
 `tester` is a backend service designed for managing programming competitions. It handles problems, contests,
 participants, and their submissions, as well as user authentication and management. The service is developed in Go using
@@ -26,6 +26,7 @@ For understanding the architecture, see the [documentation](https://github.com/V
 - File storage using SeaweedFS with an S3-compatible API.
 - LaTeX to HTML conversion for problem statements using Pandoc.
 - RESTful API defined with OpenAPI.
+- Websocket support for real-time updates.
 
 ## Prerequisites
 
