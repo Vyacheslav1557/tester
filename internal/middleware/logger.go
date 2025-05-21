@@ -21,7 +21,13 @@ func ErrorHandlerMiddleware(logger *zap.Logger) fiber.Handler {
 			return nil
 		}
 
-		statusCode := pkg.ToREST(err)
+		statusCode := c.Response().StatusCode()
+
+		var cErr *pkg.CustomError
+		if errors.As(err, &cErr) {
+			statusCode = pkg.ToREST(err)
+		}
+
 		resp := errorResponse{
 			Err: http.StatusText(statusCode),
 			Msg: "",
@@ -38,10 +44,10 @@ func ErrorHandlerMiddleware(logger *zap.Logger) fiber.Handler {
 			zap.String("method", c.Method()),
 			zap.String("path", c.Path()),
 			zap.Int("status", statusCode),
+			zap.String("error", err.Error()),
 		}
 
-		var cErr *pkg.CustomError
-		if errors.As(err, &cErr) {
+		if cErr != nil {
 			resp.Msg = cErr.Message
 
 			logFields = append(logFields,

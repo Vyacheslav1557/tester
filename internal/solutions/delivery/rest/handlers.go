@@ -13,7 +13,11 @@ import (
 	"github.com/Vyacheslav1557/tester/internal/solutions"
 	"github.com/Vyacheslav1557/tester/pkg"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
 	"io"
+	"log"
+	"sync"
+	"time"
 	"unicode/utf8"
 )
 
@@ -22,23 +26,42 @@ type Handlers struct {
 	problemsUC  problems.UseCase
 	runnerUC    runner.UseCase
 	contestsUC  contests.UseCase
+
+	subscriptions map[*Subscription]bool
+	messages      chan Message
+	mutex         *sync.Mutex
 }
 
-func NewHandlers(solutionsUC solutions.UseCase, runnerUC runner.UseCase, problemsUC problems.UseCase, contestsUC contests.UseCase) *Handlers {
-	return &Handlers{
+type Subscription struct {
+	conn        chan Message
+	solutionIds map[int32]bool
+}
+
+func NewHandlers(
+	solutionsUC solutions.UseCase,
+	runnerUC runner.UseCase,
+	problemsUC problems.UseCase,
+	contestsUC contests.UseCase,
+) *Handlers {
+	handlers := &Handlers{
 		solutionsUC: solutionsUC,
 		runnerUC:    runnerUC,
 		problemsUC:  problemsUC,
 		contestsUC:  contestsUC,
+
+		subscriptions: make(map[*Subscription]bool),
+		messages:      make(chan Message),
+		mutex:         &sync.Mutex{},
 	}
+
+	handlers.initBroadcast()
+
+	return handlers
 }
 
 const (
 	maxSolutionSize int64 = 10 * 1024 * 1024 // 10 MB
-)
-
-const (
-	sessionKey = "session"
+	sessionKey            = "session"
 )
 
 func sessionFromCtx(ctx context.Context) (*models.Session, error) {
@@ -50,6 +73,63 @@ func sessionFromCtx(ctx context.Context) (*models.Session, error) {
 	}
 
 	return session, nil
+}
+
+func (h *Handlers) broadcast(msg *Message) {
+	h.messages <- *msg
+}
+
+func (h *Handlers) initBroadcast() {
+	// FIXME: properly handle server shutdown
+
+	go func() {
+		for {
+			select {
+			case msg, ok := <-h.messages:
+				if !ok { // end all subscriptions
+					h.mutex.Lock()
+					for sub := range h.subscriptions {
+						close(sub.conn)
+					}
+					h.subscriptions = make(map[*Subscription]bool)
+					h.mutex.Unlock()
+					return
+				}
+
+				h.mutex.Lock()
+				for sub := range h.subscriptions {
+					select {
+					case sub.conn <- msg:
+					default:
+						log.Printf("error: %v", errors.New("buffer is full"))
+					}
+				}
+				h.mutex.Unlock()
+			}
+		}
+	}()
+}
+
+func (h *Handlers) registerSubscription(sub *Subscription) {
+	h.mutex.Lock()
+	h.subscriptions[sub] = true
+	h.mutex.Unlock()
+}
+
+func (h *Handlers) unregisterSubscription(sub *Subscription) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
+	select {
+	case _, ok := <-sub.conn:
+		if ok {
+			close(sub.conn)
+		}
+	default:
+		close(sub.conn)
+	}
+
+	delete(h.subscriptions, sub)
 }
 
 func (h *Handlers) CreateSolution(c *fiber.Ctx, params testerv1.CreateSolutionParams) error {
@@ -179,7 +259,15 @@ func (h *Handlers) CreateSolution(c *fiber.Ctx, params testerv1.CreateSolutionPa
 		testsPassedExpected := problem.Meta.Count
 
 		for msg := range ch {
-			// handle msg details here (when WS is implemented)
+			if msg.Details != "" {
+				h.broadcast(&Message{
+					MessageType: MessageTypeUpdate,
+					Item: &SolutionItem{
+						SolutionId: id,
+						Message:    msg.Details,
+					},
+				})
+			}
 
 			if msg.Err != nil {
 				var stErr *tester.StateErr
@@ -220,6 +308,18 @@ func (h *Handlers) CreateSolution(c *fiber.Ctx, params testerv1.CreateSolutionPa
 		if err := h.solutionsUC.UpdateSolution(ctx, id, &solutionUpdate); err != nil {
 			fmt.Println(err)
 		}
+
+		h.broadcast(&Message{
+			MessageType: MessageTypeUpdate,
+			Item: &SolutionItem{
+				SolutionId: id,
+				Message:    "",
+				State:      int32(solutionUpdate.State),
+				Score:      solutionUpdate.Score,
+				MemoryStat: solutionUpdate.MemoryStat,
+				TimeStat:   solutionUpdate.TimeStat,
+			},
+		})
 	}()
 
 	return c.JSON(testerv1.CreationResponse{Id: id})
@@ -276,9 +376,15 @@ func (h *Handlers) ListSolutions(c *fiber.Ctx, params testerv1.ListSolutionsPara
 
 	filter := ListSolutionsParamsDTO(params)
 
+	var solutionsList *models.SolutionsList
+
 	switch session.Role {
 	case models.RoleAdmin, models.RoleTeacher:
-		solutionsList, err := h.solutionsUC.ListSolutions(ctx, filter)
+		if websocket.IsWebSocketUpgrade(c) {
+			return websocket.New(h.ListSolutionsWS(filter))(c)
+		}
+
+		solutionsList, err = h.solutionsUC.ListSolutions(ctx, filter)
 		if err != nil {
 			return err
 		}
@@ -294,7 +400,11 @@ func (h *Handlers) ListSolutions(c *fiber.Ctx, params testerv1.ListSolutionsPara
 
 		filter.UserId = &session.UserId
 
-		solutionsList, err := h.solutionsUC.ListSolutions(ctx, filter)
+		if websocket.IsWebSocketUpgrade(c) {
+			return websocket.New(h.ListSolutionsWS(filter))(c)
+		}
+
+		solutionsList, err = h.solutionsUC.ListSolutions(ctx, filter)
 		if err != nil {
 			return err
 		}
@@ -302,6 +412,131 @@ func (h *Handlers) ListSolutions(c *fiber.Ctx, params testerv1.ListSolutionsPara
 		return c.JSON(ListSolutionsResponseDTO(solutionsList))
 	default:
 		return pkg.NoPermission
+	}
+}
+
+type SolutionItem struct {
+	SolutionId int32  `json:"solution_id"`
+	Message    string `json:"message,omitempty"` // message displayed to the user (Preparing, Testing, etc.)
+	State      int32  `json:"state,omitempty"`
+	Score      int32  `json:"score,omitempty"`
+	MemoryStat int32  `json:"memory_stat,omitempty"`
+	TimeStat   int32  `json:"time_stat,omitempty"`
+}
+
+const (
+	MessageTypeUpdate = "UPDATE"
+	MessageTypeSync   = "SYNC"
+	// MessageTypeReady  = "READY"
+)
+
+type Message struct {
+	MessageType string                          `json:"message_type"`
+	Items       *testerv1.ListSolutionsResponse `json:"items,omitempty"`
+	Item        *SolutionItem                   `json:"item,omitempty"`
+}
+
+func (h *Handlers) ListSolutionsWS(filter models.SolutionsFilter) func(c *websocket.Conn) {
+	/*
+			SECURITY:
+		    FIXME: handle user session termination! Idea: Set a global timeout for the connection
+
+			OPTIMIZATION:
+			FIXME:
+		    SYNC only when there is an update on solutions that satisfy the filter initially, not every second
+
+			LOGGER: FIXME: use zap instead
+	*/
+
+	return func(c *websocket.Conn) {
+		defer c.Close()
+
+		subscription := &Subscription{
+			conn:        make(chan Message),
+			solutionIds: make(map[int32]bool),
+		}
+
+		h.registerSubscription(subscription)
+		defer h.unregisterSubscription(subscription)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		go func() {
+			const readTimeout = 30 * time.Second
+			for {
+
+				if ctx.Err() != nil {
+					return
+				}
+
+				err := c.SetReadDeadline(time.Now().Add(readTimeout))
+				if err != nil {
+					log.Printf("set read deadline error: %v", err)
+					cancel()
+					return
+				}
+
+				_, _, err = c.ReadMessage()
+				if err != nil {
+					cancel()
+					return
+				}
+			}
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-subscription.conn:
+				if !ok {
+					log.Printf("subscription channel closed")
+					return
+				}
+
+				err := c.WriteJSON(&msg)
+				if err != nil {
+					log.Printf("write error: %v", err)
+					cancel()
+					return
+				}
+			case <-ticker.C:
+				solutionsList, err := h.solutionsUC.ListSolutions(ctx, filter)
+				if err != nil {
+					log.Printf("error listing solutions: %v", err)
+					cancel()
+					return
+				}
+
+				err = c.WriteJSON(&Message{
+					MessageType: MessageTypeSync,
+					Items:       ListSolutionsResponseDTO(solutionsList),
+				})
+				if err != nil {
+					log.Printf("write error: %v", err)
+					cancel()
+					return
+				}
+
+				ids := map[int32]bool{}
+				for _, solution := range solutionsList.Solutions {
+					ids[solution.Id] = true
+				}
+
+				if len(ids) == 0 {
+					cancel()
+					return
+				}
+
+				h.mutex.Lock()
+				subscription.solutionIds = ids
+				h.mutex.Unlock()
+			}
+		}
 	}
 }
 

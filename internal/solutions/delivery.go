@@ -9,4 +9,7 @@ type SolutionsHandlers interface {
 	CreateSolution(c *fiber.Ctx, params testerv1.CreateSolutionParams) error
 	GetSolution(c *fiber.Ctx, id int32) error
 	ListSolutions(c *fiber.Ctx, params testerv1.ListSolutionsParams) error
+
+	//ListSolutionsWS(c *websocket.Conn)
+	//ListSolutionsMiddleware(c *fiber.Ctx) error
 }

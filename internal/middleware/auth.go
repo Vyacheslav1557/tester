@@ -7,17 +7,21 @@ import (
 	"github.com/Vyacheslav1557/tester/internal/sessions"
 	"github.com/Vyacheslav1557/tester/pkg"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
 	"github.com/golang-jwt/jwt/v4"
 	"strings"
 )
 
-const (
-	TokenKey = "token"
-)
-
 func AuthMiddleware(jwtSecret string, sessionsUC sessions.UseCase) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		authHeader := c.Get("Authorization", "")
+		var authHeader string
+
+		if websocket.IsWebSocketUpgrade(c) {
+			authHeader = c.Query("token", "")
+		} else {
+			authHeader = c.Get("Authorization", "")
+		}
+
 		if authHeader == "" {
 			return c.Next()
 		}

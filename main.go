@@ -157,10 +157,8 @@ func main() {
 
 	testerv1.RegisterHandlersWithOptions(server, merged, testerv1.FiberServerOptions{
 		Middlewares: []testerv1.MiddlewareFunc{
-			//flogger.New(),
 			middleware.ErrorHandlerMiddleware(logger),
 			middleware.AuthMiddleware(cfg.JWTSecret, sessionsUC),
-			//rest.AuthMiddleware(cfg.JWTSecret, userUC),
 			//cors.New(cors.Config{
 			//	AllowOrigins:     "http://localhost:3000",
 			//	AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
@@ -169,6 +167,9 @@ func main() {
 			//}),
 		},
 	})
+
+	// here we handle REST endpoint response or websocket upgrade
+	//server.Use("/solutions", websocket.New(merged.ListSolutionsWS))
 
 	go func() {
 		err := server.Listen(cfg.Address)
