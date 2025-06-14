@@ -20,6 +20,8 @@ type Config struct {
 
 	CacheDir string `env:"CACHE_DIR" env-default:"/tmp"`
 
+	NatsUrl string `env:"NATS_URL" env-default:"nats://localhost:4222"`
+
 	//RabbitDSN    string `env:"RABBIT_DSN" required:"true"`
 	//InstanceName string `env:"INSTANCE_NAME" required:"true"`
 	//RQueueName   string `env:"R_QUEUE_NAME" required:"true"`

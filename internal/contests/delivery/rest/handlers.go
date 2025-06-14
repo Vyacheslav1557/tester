@@ -6,7 +6,6 @@ import (
 	"github.com/Vyacheslav1557/tester/internal/contests"
 	"github.com/Vyacheslav1557/tester/internal/models"
 	"github.com/Vyacheslav1557/tester/internal/problems"
-	"github.com/Vyacheslav1557/tester/internal/runner"
 	"github.com/Vyacheslav1557/tester/pkg"
 	"github.com/gofiber/fiber/v2"
 )
@@ -14,14 +13,12 @@ import (
 type Handlers struct {
 	problemsUC problems.UseCase
 	contestsUC contests.UseCase
-	runnerUC   runner.UseCase
 }
 
-func NewHandlers(problemsUC problems.UseCase, contestsUC contests.UseCase, runnerUC runner.UseCase) *Handlers {
+func NewHandlers(problemsUC problems.UseCase, contestsUC contests.UseCase) *Handlers {
 	return &Handlers{
 		problemsUC: problemsUC,
 		contestsUC: contestsUC,
-		runnerUC:   runnerUC,
 	}
 }
 

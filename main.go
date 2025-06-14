@@ -18,7 +18,6 @@ import (
 	problemsHandlers "github.com/Vyacheslav1557/tester/internal/problems/delivery/rest"
 	problemsRepository "github.com/Vyacheslav1557/tester/internal/problems/repository"
 	problemsUseCase "github.com/Vyacheslav1557/tester/internal/problems/usecase"
-	runnerUseCase "github.com/Vyacheslav1557/tester/internal/runner/usecase"
 	sessionsRepository "github.com/Vyacheslav1557/tester/internal/sessions/repository"
 	sessionsUseCase "github.com/Vyacheslav1557/tester/internal/sessions/usecase"
 	"github.com/Vyacheslav1557/tester/internal/solutions"
@@ -30,6 +29,7 @@ import (
 	usersRepository "github.com/Vyacheslav1557/tester/internal/users/repository"
 	usersUseCase "github.com/Vyacheslav1557/tester/internal/users/usecase"
 	"github.com/Vyacheslav1557/tester/pkg"
+	tester "github.com/Vyacheslav1557/tester/pkg/tester"
 	"github.com/docker/docker/client"
 	"github.com/gofiber/fiber/v2"
 	"github.com/ilyakaznacheev/cleanenv"
@@ -109,6 +109,11 @@ func main() {
 		logger.Error(fmt.Sprintf("error creating admin user: %s", err.Error()))
 	}
 
+	np, err := pkg.NewNatsPublisher(cfg.NatsUrl)
+	if err != nil {
+		logger.Fatal(fmt.Sprintf("error connecting to nats: %v", err))
+	}
+
 	authUC := authUseCase.NewUseCase(usersUC, sessionsUC)
 
 	pandocClient := pkg.NewPandocClient(&http.Client{}, cfg.Pandoc)
@@ -121,19 +126,19 @@ func main() {
 	contestsRepo := contestsRepository.NewRepository(db)
 	contestsUC := contestsUseCase.NewContestUseCase(contestsRepo)
 
-	solutionsRepo := solutionsRepository.NewRepository(db)
-	solutionsUC := solutionsUseCase.NewUseCase(solutionsRepo)
-
-	if err := os.MkdirAll(cfg.CacheDir, 0700); err != nil {
-		panic(fmt.Errorf("failed to create cache dir: %v", err))
-	}
-
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		panic(fmt.Errorf("failed to create docker client: %v", err))
 	}
 
-	runnerUC := runnerUseCase.NewUseCase(cli, cfg.CacheDir)
+	t := tester.NewTester(cfg.CacheDir, tester.NewDockerExecutor(cli), 2)
+
+	solutionsRepo := solutionsRepository.NewRepository(db)
+	solutionsUC := solutionsUseCase.NewUseCase(solutionsRepo, problemsUC, np, t)
+
+	if err := os.MkdirAll(cfg.CacheDir, 0700); err != nil {
+		panic(fmt.Errorf("failed to create cache dir: %v", err))
+	}
 
 	server := fiber.New(fiber.Config{
 		BodyLimit: 512 * 1024 * 1024, // 512 MB
@@ -150,9 +155,9 @@ func main() {
 	merged := MergedHandlers{
 		usersHandlers.NewHandlers(usersUC),
 		authHandlers.NewHandlers(authUC, cfg.JWTSecret),
-		contestsHandlers.NewHandlers(problemsUC, contestsUC, runnerUC),
+		contestsHandlers.NewHandlers(problemsUC, contestsUC),
 		problemsHandlers.NewHandlers(problemsUC),
-		solutionsHandlers.NewHandlers(solutionsUC, runnerUC, problemsUC, contestsUC),
+		solutionsHandlers.NewHandlers(solutionsUC, problemsUC, contestsUC),
 	}
 
 	testerv1.RegisterHandlersWithOptions(server, merged, testerv1.FiberServerOptions{

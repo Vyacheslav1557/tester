@@ -2,59 +2,34 @@ package rest
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	testerv1 "github.com/Vyacheslav1557/tester/contracts/tester/v1"
 	"github.com/Vyacheslav1557/tester/internal/contests"
 	"github.com/Vyacheslav1557/tester/internal/models"
 	"github.com/Vyacheslav1557/tester/internal/problems"
-	"github.com/Vyacheslav1557/tester/internal/runner"
-	"github.com/Vyacheslav1557/tester/internal/runner/usecase/tester"
 	"github.com/Vyacheslav1557/tester/internal/solutions"
 	"github.com/Vyacheslav1557/tester/pkg"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/websocket/v2"
+	"github.com/golang-jwt/jwt/v4"
 	"io"
-	"log"
-	"sync"
-	"time"
 	"unicode/utf8"
 )
 
 type Handlers struct {
 	solutionsUC solutions.UseCase
 	problemsUC  problems.UseCase
-	runnerUC    runner.UseCase
 	contestsUC  contests.UseCase
-
-	subscriptions map[*Subscription]bool
-	messages      chan Message
-	mutex         *sync.Mutex
-}
-
-type Subscription struct {
-	conn        chan Message
-	solutionIds map[int32]bool
 }
 
 func NewHandlers(
 	solutionsUC solutions.UseCase,
-	runnerUC runner.UseCase,
 	problemsUC problems.UseCase,
 	contestsUC contests.UseCase,
 ) *Handlers {
 	handlers := &Handlers{
 		solutionsUC: solutionsUC,
-		runnerUC:    runnerUC,
 		problemsUC:  problemsUC,
 		contestsUC:  contestsUC,
-
-		subscriptions: make(map[*Subscription]bool),
-		messages:      make(chan Message),
-		mutex:         &sync.Mutex{},
 	}
-
-	handlers.initBroadcast()
 
 	return handlers
 }
@@ -73,63 +48,6 @@ func sessionFromCtx(ctx context.Context) (*models.Session, error) {
 	}
 
 	return session, nil
-}
-
-func (h *Handlers) broadcast(msg *Message) {
-	h.messages <- *msg
-}
-
-func (h *Handlers) initBroadcast() {
-	// FIXME: properly handle server shutdown
-
-	go func() {
-		for {
-			select {
-			case msg, ok := <-h.messages:
-				if !ok { // end all subscriptions
-					h.mutex.Lock()
-					for sub := range h.subscriptions {
-						close(sub.conn)
-					}
-					h.subscriptions = make(map[*Subscription]bool)
-					h.mutex.Unlock()
-					return
-				}
-
-				h.mutex.Lock()
-				for sub := range h.subscriptions {
-					select {
-					case sub.conn <- msg:
-					default:
-						log.Printf("error: %v", errors.New("buffer is full"))
-					}
-				}
-				h.mutex.Unlock()
-			}
-		}
-	}()
-}
-
-func (h *Handlers) registerSubscription(sub *Subscription) {
-	h.mutex.Lock()
-	h.subscriptions[sub] = true
-	h.mutex.Unlock()
-}
-
-func (h *Handlers) unregisterSubscription(sub *Subscription) {
-	h.mutex.Lock()
-	defer h.mutex.Unlock()
-
-	select {
-	case _, ok := <-sub.conn:
-		if ok {
-			close(sub.conn)
-		}
-	default:
-		close(sub.conn)
-	}
-
-	delete(h.subscriptions, sub)
 }
 
 func (h *Handlers) CreateSolution(c *fiber.Ctx, params testerv1.CreateSolutionParams) error {
@@ -202,125 +120,11 @@ func (h *Handlers) CreateSolution(c *fiber.Ctx, params testerv1.CreateSolutionPa
 		ContestId: params.ContestId,
 		Language:  langName,
 		Solution:  solution,
-		Penalty:   20, // TODO: get penalty from the fucking contest
+		Penalty:   20, // TODO: get penalty from contest
 	})
 	if err != nil {
 		return err
 	}
-
-	problem, err := h.problemsUC.GetProblemById(ctx, params.ProblemId)
-	if err != nil {
-		return err
-	}
-
-	// FIXME: check if the solutions builds
-	// if there are no tests, just accept the solution
-	if problem.Meta.Count == 0 {
-		err := h.solutionsUC.UpdateSolution(ctx, id, &models.SolutionUpdate{
-			State:      models.Accepted,
-			Score:      100,
-			TimeStat:   0,
-			MemoryStat: 0,
-		})
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}
-
-	zipPath, err := h.problemsUC.DownloadTestsArchive(ctx, problem.Id)
-	if err != nil {
-		return err
-	}
-
-	packet := Packet{
-		problemId:   problem.Id,
-		solution:    []byte(solution),
-		updatedAt:   problem.UpdatedAt.Unix(),
-		language:    langName,
-		zipPath:     zipPath,
-		timeLimit:   int64(problem.TimeLimit),
-		memoryLimit: int64(problem.MemoryLimit),
-		meta:        &problem.Meta,
-	}
-
-	go func() {
-		ch := h.runnerUC.Test(ctx, packet)
-
-		solutionUpdate := models.SolutionUpdate{
-			State:      models.Saved,
-			Score:      0,
-			TimeStat:   0,
-			MemoryStat: 0,
-		}
-
-		testsPassed := 0
-		testsPassedExpected := problem.Meta.Count
-
-		for msg := range ch {
-			if msg.Details != "" {
-				h.broadcast(&Message{
-					MessageType: MessageTypeUpdate,
-					Item: &SolutionItem{
-						SolutionId: id,
-						Message:    msg.Details,
-					},
-				})
-			}
-
-			if msg.Err != nil {
-				var stErr *tester.StateErr
-				if errors.As(msg.Err, &stErr) {
-					solutionUpdate.State = stErr.State
-					break
-				}
-
-				fmt.Println("something really bad happened here")
-				break
-			}
-
-			if msg.Metrics != nil {
-				testsPassed++
-
-				// doing this way we get the max over all tests
-				solutionUpdate.MemoryStat = max(
-					solutionUpdate.MemoryStat,
-					int32(msg.Metrics.MaximumResidentSetSize),
-				)
-				solutionUpdate.TimeStat = max(
-					solutionUpdate.TimeStat,
-					int32(msg.Metrics.ElapsedTime.Milliseconds()),
-				)
-			}
-		}
-
-		if testsPassed != testsPassedExpected && solutionUpdate.State == models.Saved {
-			fmt.Println("something bad had happened")
-			return
-		}
-
-		if testsPassed == testsPassedExpected {
-			solutionUpdate.Score = 100
-			solutionUpdate.State = models.Accepted
-		}
-
-		if err := h.solutionsUC.UpdateSolution(ctx, id, &solutionUpdate); err != nil {
-			fmt.Println(err)
-		}
-
-		h.broadcast(&Message{
-			MessageType: MessageTypeUpdate,
-			Item: &SolutionItem{
-				SolutionId: id,
-				Message:    "",
-				State:      int32(solutionUpdate.State),
-				Score:      solutionUpdate.Score,
-				MemoryStat: solutionUpdate.MemoryStat,
-				TimeStat:   solutionUpdate.TimeStat,
-			},
-		})
-	}()
 
 	return c.JSON(testerv1.CreationResponse{Id: id})
 }
@@ -380,8 +184,8 @@ func (h *Handlers) ListSolutions(c *fiber.Ctx, params testerv1.ListSolutionsPara
 
 	switch session.Role {
 	case models.RoleAdmin, models.RoleTeacher:
-		if websocket.IsWebSocketUpgrade(c) {
-			return websocket.New(h.ListSolutionsWS(filter))(c)
+		if params.ContestId == nil {
+			return pkg.Wrap(pkg.ErrBadInput, nil, "", "contest id is required")
 		}
 
 		solutionsList, err = h.solutionsUC.ListSolutions(ctx, filter)
@@ -389,19 +193,18 @@ func (h *Handlers) ListSolutions(c *fiber.Ctx, params testerv1.ListSolutionsPara
 			return err
 		}
 
-		return c.JSON(ListSolutionsResponseDTO(solutionsList))
+		at, err := NewJWT(session.UserId, *params.ContestId, session.Role)
+		if err != nil {
+			return err
+		}
+
+		return c.JSON(ListSolutionsResponseDTO(solutionsList, at))
 	case models.RoleStudent:
 		if params.ContestId == nil {
 			return pkg.Wrap(pkg.ErrBadInput, nil, "", "contest id is required")
 		}
-		if params.UserId != nil && *params.UserId != session.UserId {
+		if params.UserId == nil || *params.UserId != session.UserId {
 			return pkg.Wrap(pkg.NoPermission, nil, "", "cannot list solutions for another user")
-		}
-
-		filter.UserId = &session.UserId
-
-		if websocket.IsWebSocketUpgrade(c) {
-			return websocket.New(h.ListSolutionsWS(filter))(c)
 		}
 
 		solutionsList, err = h.solutionsUC.ListSolutions(ctx, filter)
@@ -409,135 +212,32 @@ func (h *Handlers) ListSolutions(c *fiber.Ctx, params testerv1.ListSolutionsPara
 			return err
 		}
 
-		return c.JSON(ListSolutionsResponseDTO(solutionsList))
+		at, err := NewJWT(session.UserId, *params.ContestId, session.Role)
+		if err != nil {
+			return err
+		}
+
+		return c.JSON(ListSolutionsResponseDTO(solutionsList, at))
 	default:
 		return pkg.NoPermission
 	}
 }
 
-type SolutionItem struct {
-	SolutionId int32  `json:"solution_id"`
-	Message    string `json:"message,omitempty"` // message displayed to the user (Preparing, Testing, etc.)
-	State      int32  `json:"state,omitempty"`
-	Score      int32  `json:"score,omitempty"`
-	MemoryStat int32  `json:"memory_stat,omitempty"`
-	TimeStat   int32  `json:"time_stat,omitempty"`
+type CustomClaims struct {
+	UserId    int32       `json:"UserId"`
+	ContestId int32       `json:"ContestId"`
+	Role      models.Role `json:"Role"`
+	jwt.RegisteredClaims
 }
 
-const (
-	MessageTypeUpdate = "UPDATE"
-	MessageTypeSync   = "SYNC"
-	// MessageTypeReady  = "READY"
-)
-
-type Message struct {
-	MessageType string                          `json:"message_type"`
-	Items       *testerv1.ListSolutionsResponse `json:"items,omitempty"`
-	Item        *SolutionItem                   `json:"item,omitempty"`
-}
-
-func (h *Handlers) ListSolutionsWS(filter models.SolutionsFilter) func(c *websocket.Conn) {
-	/*
-			SECURITY:
-		    FIXME: handle user session termination! Idea: Set a global timeout for the connection
-
-			OPTIMIZATION:
-			FIXME:
-		    SYNC only when there is an update on solutions that satisfy the filter initially, not every second
-
-			LOGGER: FIXME: use zap instead
-	*/
-
-	return func(c *websocket.Conn) {
-		defer c.Close()
-
-		subscription := &Subscription{
-			conn:        make(chan Message),
-			solutionIds: make(map[int32]bool),
-		}
-
-		h.registerSubscription(subscription)
-		defer h.unregisterSubscription(subscription)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-
-		go func() {
-			const readTimeout = 30 * time.Second
-			for {
-
-				if ctx.Err() != nil {
-					return
-				}
-
-				err := c.SetReadDeadline(time.Now().Add(readTimeout))
-				if err != nil {
-					log.Printf("set read deadline error: %v", err)
-					cancel()
-					return
-				}
-
-				_, _, err = c.ReadMessage()
-				if err != nil {
-					cancel()
-					return
-				}
-			}
-		}()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg, ok := <-subscription.conn:
-				if !ok {
-					log.Printf("subscription channel closed")
-					return
-				}
-
-				err := c.WriteJSON(&msg)
-				if err != nil {
-					log.Printf("write error: %v", err)
-					cancel()
-					return
-				}
-			case <-ticker.C:
-				solutionsList, err := h.solutionsUC.ListSolutions(ctx, filter)
-				if err != nil {
-					log.Printf("error listing solutions: %v", err)
-					cancel()
-					return
-				}
-
-				err = c.WriteJSON(&Message{
-					MessageType: MessageTypeSync,
-					Items:       ListSolutionsResponseDTO(solutionsList),
-				})
-				if err != nil {
-					log.Printf("write error: %v", err)
-					cancel()
-					return
-				}
-
-				ids := map[int32]bool{}
-				for _, solution := range solutionsList.Solutions {
-					ids[solution.Id] = true
-				}
-
-				if len(ids) == 0 {
-					cancel()
-					return
-				}
-
-				h.mutex.Lock()
-				subscription.solutionIds = ids
-				h.mutex.Unlock()
-			}
-		}
+func NewJWT(userId int32, contestId int32, role models.Role) (string, error) {
+	claims := CustomClaims{
+		UserId:    userId,
+		ContestId: contestId,
+		Role:      role,
 	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte("your-secret-key"))
 }
 
 func ListSolutionsParamsDTO(params testerv1.ListSolutionsParams) models.SolutionsFilter {
@@ -565,10 +265,11 @@ func ListSolutionsParamsDTO(params testerv1.ListSolutionsParams) models.Solution
 	}
 }
 
-func ListSolutionsResponseDTO(solutionsList *models.SolutionsList) *testerv1.ListSolutionsResponse {
+func ListSolutionsResponseDTO(solutionsList *models.SolutionsList, at string) *testerv1.ListSolutionsResponse {
 	resp := testerv1.ListSolutionsResponse{
-		Solutions:  make([]testerv1.SolutionsListItem, len(solutionsList.Solutions)),
-		Pagination: PaginationDTO(solutionsList.Pagination),
+		Solutions:   make([]testerv1.SolutionsListItem, len(solutionsList.Solutions)),
+		Pagination:  PaginationDTO(solutionsList.Pagination),
+		AccessToken: at,
 	}
 
 	for i, solution := range solutionsList.Solutions {
@@ -639,43 +340,4 @@ func SolutionDTO(s models.Solution) testerv1.Solution {
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
 	}
-}
-
-type Packet struct {
-	solution    []byte
-	problemId   int32
-	updatedAt   int64
-	language    models.LanguageName
-	zipPath     string
-	timeLimit   int64
-	memoryLimit int64
-	meta        *models.Meta
-}
-
-func (p Packet) Solution() []byte {
-	return p.solution
-}
-
-func (p Packet) UniquePacketName() string {
-	return fmt.Sprintf("%d_%d", p.problemId, p.updatedAt)
-}
-
-func (p Packet) Lang() models.LanguageName {
-	return p.language
-}
-
-func (p Packet) ZipPath() string {
-	return p.zipPath
-}
-
-func (p Packet) TL() int64 {
-	return p.timeLimit
-}
-
-func (p Packet) ML() int64 {
-	return p.memoryLimit
-}
-
-func (p Packet) Meta() *models.Meta {
-	return p.meta
 }

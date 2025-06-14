@@ -35,13 +35,18 @@ type Compiler interface {
 }
 
 type Packet interface {
-	Solution() []byte
+	ContestId() int32
 	UniquePacketName() string
-	Lang() models.LanguageName
 	ZipPath() string
 	TL() int64
 	ML() int64
 	Meta() *models.Meta
+}
+
+type Solution interface {
+	Id() int32
+	Solution() []byte
+	Lang() models.LanguageName
 }
 
 type TestingMessage struct {
@@ -97,7 +102,7 @@ func (t *Tester) prepareTests(p Packet) (string, error) {
 	return testsPath, nil
 }
 
-func (t *Tester) prepareSource(p Packet, workDir string) (string, error) {
+func (t *Tester) prepareSource(s Solution, workDir string) (string, error) {
 	sourcePath := filepath.Join(workDir, "source")
 
 	file, err := os.OpenFile(sourcePath, os.O_CREATE, 0600)
@@ -105,7 +110,7 @@ func (t *Tester) prepareSource(p Packet, workDir string) (string, error) {
 		return "", err
 	}
 
-	_, err = file.Write(p.Solution())
+	_, err = file.Write(s.Solution())
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +143,7 @@ func (t *Tester) prepareBuild(testDir, buildPath string) (string, error) {
 	return buildCopyPath, nil
 }
 
-func (t *Tester) test(p Packet, buildPath, testsPath, testName string) (*Metrics, error) {
+func (t *Tester) test(p Packet, s Solution, buildPath, testsPath, testName string) (*Metrics, error) {
 	const op = "Tester.test"
 
 	testDir, err := os.MkdirTemp("", "test")
@@ -173,7 +178,7 @@ func (t *Tester) test(p Packet, buildPath, testsPath, testName string) (*Metrics
 			ch <- msg
 		},
 		ctx:     ctx,
-		cfg:     GetConfig(p.Lang()),
+		cfg:     GetConfig(s.Lang()),
 		workDir: testDir,
 		in:      in,
 	})
@@ -217,7 +222,7 @@ func (t *Tester) test(p Packet, buildPath, testsPath, testName string) (*Metrics
 	return metrics, nil
 }
 
-func (t *Tester) Test(ctx context.Context, packet Packet) <-chan TestingMessage {
+func (t *Tester) Test(ctx context.Context, packet Packet, s Solution) <-chan TestingMessage {
 	const op = "Tester.Test"
 
 	ch := make(chan TestingMessage)
@@ -234,7 +239,7 @@ func (t *Tester) Test(ctx context.Context, packet Packet) <-chan TestingMessage 
 			return
 		}
 
-		lang := GetConfig(packet.Lang())
+		lang := GetConfig(s.Lang())
 		if lang == nil {
 			ch <- TestingMessage{
 				Err: pkg.Wrap(pkg.ErrInternal, nil, op, "unknown language"),
@@ -251,7 +256,7 @@ func (t *Tester) Test(ctx context.Context, packet Packet) <-chan TestingMessage 
 		}
 		defer os.RemoveAll(workDir)
 
-		_, err = t.prepareSource(packet, workDir)
+		_, err = t.prepareSource(s, workDir)
 		if err != nil {
 			ch <- TestingMessage{
 				Err: pkg.Wrap(pkg.ErrInternal, err, op, "failed to prepare source"),
@@ -288,7 +293,7 @@ func (t *Tester) Test(ctx context.Context, packet Packet) <-chan TestingMessage 
 			go func() {
 				defer wg.Done()
 
-				metrics, err := t.test(packet, buildPath, testsPath, testName)
+				metrics, err := t.test(packet, s, buildPath, testsPath, testName)
 				if err != nil {
 					ch <- TestingMessage{
 						Metrics: metrics,
