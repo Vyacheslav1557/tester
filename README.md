@@ -117,9 +117,21 @@ services:
       - master
       - volume
       - filer
+  nats:
+    image: nats:2.10
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats-data:/data
+      - ./nats.conf:/etc/nats/nats.conf
+    command: ["-c", "/etc/nats/nats.conf"]
+
 volumes:
   postgres-data:
   valkey-data:
+  nats-data:
+    name: nats-data
 ```
 
 Start the services in detached mode:
@@ -164,6 +176,14 @@ shown below:
 }
 ```
 
+#### NAS Configuration
+
+```
+port: 4222
+http: 8222
+logfile: "/data/nats.log"
+```
+
 Ensure the S3_ACCESS_KEY and S3_SECRET_KEY in your .env file match the credentials defined in s3.json.
 
 ## 2. Configuration
@@ -202,6 +222,8 @@ S3_SECRET_KEY=some_access_key1
 # Cache configuration
 # is needed to download archives from S3 and store tests in the cache
 CACHE_DIR=C:\Users\You\gate7\tester\cache
+
+NATS_URL=nats://localhost:4222
 ```
 
 Important: Replace supersecretpassword, secret, admin, some_access_key1, and other sensitive values with secure, unique
